@@ -28,6 +28,25 @@ enum class Muscle(val display: String, val group: MuscleGroup) {
 
 enum class MuscleGroup { PUSH, PULL, LEGS, CORE }
 
+/**
+ * How people actually talk about body parts when hunting for an exercise.
+ *
+ * Seventeen individual muscles is the right vocabulary for planning volume and the wrong one
+ * for a filter bar, where "Back" beats scanning lats / upper back / traps / lower back.
+ */
+enum class BodyPart(val display: String, val muscles: List<Muscle>) {
+    CHEST("Chest", listOf(Muscle.CHEST)),
+    BACK("Back", listOf(Muscle.LATS, Muscle.UPPER_BACK, Muscle.TRAPS, Muscle.LOWER_BACK)),
+    SHOULDERS("Shoulders", listOf(Muscle.FRONT_DELTS, Muscle.SIDE_DELTS, Muscle.REAR_DELTS)),
+    ARMS("Arms", listOf(Muscle.BICEPS, Muscle.TRICEPS, Muscle.FOREARMS)),
+    LEGS("Legs", listOf(Muscle.QUADS, Muscle.HAMSTRINGS, Muscle.GLUTES, Muscle.CALVES, Muscle.ADDUCTORS)),
+    CORE("Core", listOf(Muscle.ABS));
+
+    companion object {
+        fun of(muscle: Muscle): BodyPart = entries.first { muscle in it.muscles }
+    }
+}
+
 enum class EquipmentCategory(val display: String) {
     FREE_WEIGHT("Free weights"),
     MACHINE("Machines & cables"),
@@ -52,6 +71,8 @@ enum class Equipment(val display: String, val category: EquipmentCategory) {
     MACHINE_PLATE_LOADED("Machine (plate loaded)", EquipmentCategory.MACHINE),
     CABLE("Cable stack", EquipmentCategory.MACHINE),
     SMITH("Smith machine", EquipmentCategory.MACHINE),
+    RACK("Squat / power rack", EquipmentCategory.FREE_WEIGHT),
+    BENCH("Bench", EquipmentCategory.FREE_WEIGHT),
     BODYWEIGHT("Bodyweight", EquipmentCategory.BODYWEIGHT),
     PULL_UP_BAR("Pull-up bar", EquipmentCategory.BODYWEIGHT),
     DIP_STATION("Dip bars", EquipmentCategory.BODYWEIGHT),

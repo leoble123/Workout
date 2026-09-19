@@ -131,7 +131,7 @@ class GymViewModel(
     }
 
     fun addGymFromPreset(full: Boolean, units: Units) = viewModelScope.launch {
-        val preset = if (full) GymSeed.fullGym(units) else GymSeed.cableLedGym(units)
+        val preset = if (full) GymSeed.fullGym(units) else GymSeed.minimalCableGym("New gym", units)
         gyms.applyPreset(preset, makeActive = true)
     }
 

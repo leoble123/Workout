@@ -19,6 +19,15 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 @Immutable
+data class GymSummary(
+    val name: String? = null,
+    val units: com.leo.forge.domain.model.Units? = null,
+    val availableCount: Int = 0,
+    val library: List<ExerciseEntity> = emptyList(),
+    val availableIds: Set<String>? = null,
+)
+
+@Immutable
 data class ProgramState(
     val meso: MesocycleEntity? = null,
     val days: List<PlannedDayWithExercises> = emptyList(),
@@ -28,10 +37,24 @@ data class ProgramState(
 
 class ProgramViewModel(
     private val program: ProgramRepository,
+    private val gyms: com.leo.forge.data.repo.GymRepository,
     exercises: ExerciseRepository,
 ) : ViewModel() {
 
     private val building = MutableStateFlow(false)
+
+    /** The gym the block will be built from, and how much it can actually do. */
+    val gymSummary: StateFlow<GymSummary> = combine(
+        gyms.observeActive(), gyms.observeAvailableExerciseIds(), exercises.observeAll(),
+    ) { gym, ids, library ->
+        GymSummary(
+            name = gym?.name,
+            units = gym?.units,
+            availableCount = ids?.size ?: library.size,
+            library = library,
+            availableIds = ids,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GymSummary())
 
     private val mesoFlow = program.observeCurrent()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -46,13 +69,22 @@ class ProgramViewModel(
         ProgramState(meso, days, library.associateBy { it.id }, isBuilding)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProgramState())
 
+    fun swapPlanned(planned: com.leo.forge.data.db.entity.PlannedExerciseEntity, newExerciseId: String) =
+        viewModelScope.launch { program.swapPlanned(planned, newExerciseId) }
+
+    fun removePlanned(planned: com.leo.forge.data.db.entity.PlannedExerciseEntity) =
+        viewModelScope.launch { program.removePlanned(planned) }
+
+    fun addToDay(dayId: Long, exerciseId: String, orderIndex: Int) = viewModelScope.launch {
+        state.value.library[exerciseId]?.let { program.addExerciseToDay(dayId, it, orderIndex) }
+    }
+
     fun build(
         name: String,
         split: SplitType,
         daysPerWeek: Int,
         weeks: Int,
         emphasis: Set<Muscle>,
-        equipment: Set<Equipment>,
         onDone: () -> Unit,
     ) {
         if (building.value) return
@@ -65,7 +97,7 @@ class ProgramViewModel(
                         split = split,
                         daysPerWeek = daysPerWeek,
                         totalWeeks = weeks,
-                        availableEquipment = equipment.ifEmpty { Equipment.entries.toSet() },
+                        // Availability comes from the gym profile, not from a checklist here.
                         emphasis = emphasis,
                     )
                 )
@@ -80,7 +112,7 @@ class ProgramViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val c = container
-                ProgramViewModel(c.program, c.exercises)
+                ProgramViewModel(c.program, c.gyms, c.exercises)
             }
         }
     }

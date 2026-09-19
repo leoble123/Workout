@@ -32,7 +32,9 @@ object Availability {
     ): Boolean {
         overrides[exercise.id]?.let { return it }
         if (exercise.id in stationExerciseIds) return true
-        return exercise.equipment in availableEquipment
+        if (exercise.equipment !in availableEquipment) return false
+        // A barbell without a rack is not a back squat.
+        return exercise.requiresAlso.all { it in availableEquipment }
     }
 
     /** Why an exercise is or is not on the menu, for the gym screen. */
@@ -45,7 +47,10 @@ object Availability {
         overrides[exercise.id] == true -> "You marked this as available here"
         overrides[exercise.id] == false -> "You marked this as unavailable here"
         exercise.id in stationExerciseIds -> "One of your stations does this"
-        exercise.equipment in availableEquipment -> "You have ${exercise.equipment.display.lowercase()}"
-        else -> "No ${exercise.equipment.display.lowercase()} at this gym"
+        exercise.equipment !in availableEquipment -> "No ${exercise.equipment.display.lowercase()} at this gym"
+        exercise.requiresAlso.any { it !in availableEquipment } ->
+            "Needs " + exercise.requiresAlso.filter { it !in availableEquipment }
+                .joinToString(" and ") { it.display.lowercase() }
+        else -> "You have ${exercise.equipment.display.lowercase()}"
     }
 }

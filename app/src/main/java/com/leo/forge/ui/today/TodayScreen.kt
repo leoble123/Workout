@@ -60,45 +60,51 @@ fun TodayScreen(
             }
         }
 
-        when {
-            state.loading -> item {
+        if (state.loading) {
+            item {
                 Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                     Text("Loading", style = MaterialTheme.typography.bodyMedium, color = Forge.colors.textTertiary)
                 }
             }
-
-            state.meso == null -> item {
-                ForgeCard(Modifier.fillMaxWidth()) {
-                    EmptyState(
-                        title = "No block running",
-                        body = "Forge builds the whole mesocycle for you - split, exercise choice, set counts, " +
-                            "deload - then decides each session's loads from how the last one went.",
-                        action = { PrimaryButton("Build my program", onClick = onOpenProgram) },
+        } else {
+            // There is always a way to start lifting. Setting up a block is optional.
+            item {
+                if (state.hasPlannedSession || state.activeSession != null) {
+                    NextSessionCard(
+                        state = state,
+                        onStart = {
+                            scope.launch {
+                                vm.startWorkout() ?: vm.startEmptyWorkout()
+                                onStartWorkout()
+                            }
+                        },
+                    )
+                } else {
+                    FreestyleCard(
+                        blockComplete = state.blockComplete,
+                        blockEmpty = state.blockEmpty,
+                        mesoName = state.meso?.name,
+                        onStart = {
+                            scope.launch {
+                                vm.startEmptyWorkout()
+                                onStartWorkout()
+                            }
+                        },
+                        onOpenProgram = onOpenProgram,
                     )
                 }
             }
 
-            state.blockComplete -> item {
-                ForgeCard(Modifier.fillMaxWidth()) {
-                    EmptyState(
-                        title = "Block complete",
-                        body = "Every week of ${state.meso?.name} is done, deload included. " +
-                            "Start the next one and it will pick up from your current strength.",
-                        action = { PrimaryButton("Plan the next block", onClick = onOpenProgram) },
-                    )
-                }
-            }
-
-            else -> item {
-                NextSessionCard(
-                    state = state,
-                    onStart = {
+            // Even with a session planned, an off-script day should not need a detour.
+            if (state.hasPlannedSession && state.activeSession == null) {
+                item {
+                    SecondaryButton("Start an empty workout instead", Modifier.fillMaxWidth()) {
                         scope.launch {
-                            vm.startWorkout()
+                            vm.startEmptyWorkout()
                             onStartWorkout()
                         }
-                    },
-                )
+                    }
+                }
             }
         }
 
@@ -137,6 +143,51 @@ fun TodayScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Shown when there is no planned session: starting a workout must still be one tap. */
+@Composable
+private fun FreestyleCard(
+    blockComplete: Boolean,
+    blockEmpty: Boolean,
+    mesoName: String?,
+    onStart: () -> Unit,
+    onOpenProgram: () -> Unit,
+) {
+    ForgeCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp)) {
+            Text(
+                when {
+                    blockComplete -> "Block finished"
+                    blockEmpty -> "Your block has no days yet"
+                    else -> "Ready when you are"
+                },
+                style = MaterialTheme.typography.displayMedium,
+                color = Forge.colors.textPrimary,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                when {
+                    blockComplete -> "Every week of ${mesoName ?: "the block"} is done, deload included. " +
+                        "Start an empty session, or plan the next block."
+                    blockEmpty -> "Nothing was generated for it - most likely your gym has too little " +
+                        "kit selected. Train freely now and fix the block when you have a minute."
+                    else -> "Add exercises as you go. Forge fills in the weights from the last time " +
+                        "you did each one, so you never have to remember."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = Forge.colors.textSecondary,
+            )
+            Spacer(Modifier.height(18.dp))
+            PrimaryButton("Start workout", Modifier.fillMaxWidth(), icon = Icons.Rounded.PlayArrow, onClick = onStart)
+            Spacer(Modifier.height(8.dp))
+            SecondaryButton(
+                if (blockComplete) "Plan the next block" else "Build an automated program",
+                Modifier.fillMaxWidth(),
+                onClick = onOpenProgram,
+            )
         }
     }
 }
@@ -221,7 +272,7 @@ private fun PreviewRow(plan: ExercisePlanUi) {
         Text(
             buildString {
                 append("${plan.prescription.targets.size}×")
-                append(first?.reps ?: plan.planned.repLow)
+                append(first?.reps ?: plan.repLow)
                 if (first != null && first.weightKg > 0.0) append(" · ${loadWithUnit(first.weightKg)}")
             },
             style = NumericStyle.copy(fontSize = 13.sp, fontWeight = FontWeight.Medium),

@@ -42,3 +42,31 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         db.execSQL("UPDATE exercises SET equipment = 'MACHINE_SELECTORIZED' WHERE equipment = 'MACHINE'")
     }
 }
+
+
+/**
+ * v2 -> v3: session exercises, extra equipment requirements, and a per-gym barbell step.
+ *
+ * session_exercises is the important one. A session used to be a read-only view of a planned
+ * day, which meant a workout could not exist without a generated mesocycle - you could not
+ * simply open the app and lift. Both planned and freestyle sessions now materialise into
+ * these rows, so adding, swapping and dropping exercises works identically in either.
+ *
+ * requiresAlso is added with a SQL default so the NOT NULL column can be back-filled;
+ * Room does not enforce a default the entity does not declare, so this stays compatible.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `session_exercises` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sessionId` INTEGER NOT NULL, `exerciseId` TEXT NOT NULL, `orderIndex` INTEGER NOT NULL, `targetSets` INTEGER NOT NULL, `repLow` INTEGER NOT NULL, `repHigh` INTEGER NOT NULL, `restSeconds` INTEGER NOT NULL, FOREIGN KEY(`sessionId`) REFERENCES `sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`exerciseId`) REFERENCES `exercises`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_session_exercises_sessionId` ON `session_exercises` (`sessionId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_session_exercises_exerciseId` ON `session_exercises` (`exerciseId`)")
+
+        db.execSQL("ALTER TABLE exercises ADD COLUMN requiresAlso TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE gyms ADD COLUMN barbellIncrement REAL")
+
+        // A barbell with nothing to unrack from is not a back squat.
+        db.execSQL("UPDATE exercises SET requiresAlso = 'BENCH' WHERE id IN ('bulgarian_split_squat', 'chest_supported_dumbbell_shrug', 'chest_supported_row', 'concentration_curl', 'decline_sit_up', 'dumbbell_bench_press', 'dumbbell_fly', 'dumbbell_hip_thrust', 'dumbbell_pullover', 'dumbbell_row', 'hip_thrust', 'incline_dumbbell_curl', 'incline_dumbbell_fly', 'incline_dumbbell_press', 'preacher_curl', 'seated_dumbbell_shoulder_press', 'skull_crusher', 'smith_incline_press', 'smith_machine_bench_press', 'spider_curl', 'step_up')")
+        db.execSQL("UPDATE exercises SET requiresAlso = 'RACK' WHERE id IN ('back_squat', 'front_squat', 'good_morning')")
+        db.execSQL("UPDATE exercises SET requiresAlso = 'RACK,BENCH' WHERE id IN ('barbell_bench_press', 'close_grip_bench_press', 'decline_barbell_bench_press', 'incline_barbell_bench_press', 'jm_press')")
+    }
+}

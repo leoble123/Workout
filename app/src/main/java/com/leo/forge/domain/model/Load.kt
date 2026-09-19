@@ -33,6 +33,7 @@ object Load {
         Equipment.MACHINE_SELECTORIZED -> 5.0                            // pin stacks are coarse
         Equipment.MACHINE_PLATE_LOADED -> 2.5
         Equipment.BODYWEIGHT, Equipment.PULL_UP_BAR, Equipment.DIP_STATION -> 2.5 // belt plates
+        Equipment.RACK, Equipment.BENCH -> 2.5    // never loaded directly; listed for completeness
         Equipment.BANDS -> 0.0                                           // progress by reps only
         Equipment.OTHER -> 2.5
     }
@@ -47,6 +48,7 @@ object Load {
         Equipment.MACHINE_SELECTORIZED -> 10.0
         Equipment.MACHINE_PLATE_LOADED -> 5.0
         Equipment.BODYWEIGHT, Equipment.PULL_UP_BAR, Equipment.DIP_STATION -> 5.0
+        Equipment.RACK, Equipment.BENCH -> 5.0
         Equipment.BANDS -> 0.0
         Equipment.OTHER -> 5.0
     }
@@ -57,8 +59,26 @@ object Load {
      * @param storedKgIncrement the exercise's own kg increment; zero means the load cannot
      *   move at all (bands), which must survive the unit switch rather than being defaulted away.
      */
-    fun increment(equipment: Equipment, units: Units, storedKgIncrement: Double = -1.0): Double {
+    /** The implements whose step is decided by which plates the gym happens to stock. */
+    private val PLATE_LOADED = setOf(
+        Equipment.BARBELL, Equipment.EZ_BAR, Equipment.TRAP_BAR,
+        Equipment.SMITH, Equipment.LANDMINE, Equipment.MACHINE_PLATE_LOADED,
+    )
+
+    /**
+     * @param gymBarbellIncrement the smallest barbell jump this gym can actually make, in
+     *   [units] - two of its smallest plate. Overrides the default for plate-loaded kit.
+     */
+    fun increment(
+        equipment: Equipment,
+        units: Units,
+        storedKgIncrement: Double = -1.0,
+        gymBarbellIncrement: Double? = null,
+    ): Double {
         if (storedKgIncrement == 0.0) return 0.0
+        if (gymBarbellIncrement != null && gymBarbellIncrement > 0.0 && equipment in PLATE_LOADED) {
+            return gymBarbellIncrement
+        }
         return when (units) {
             Units.KG -> if (storedKgIncrement > 0.0) storedKgIncrement else incrementKg(equipment)
             Units.LB -> incrementLb(equipment)

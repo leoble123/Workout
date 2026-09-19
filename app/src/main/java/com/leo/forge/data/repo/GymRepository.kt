@@ -8,6 +8,7 @@ import com.leo.forge.domain.model.Equipment
 import com.leo.forge.domain.model.Units
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -33,14 +34,53 @@ class GymRepository(private val db: ForgeDatabase) {
      * Creates a starting gym the first time the app runs. Without one, the generator has
      * no idea what is on the floor and quietly assumes a fully-stocked commercial gym.
      */
-    suspend fun ensureDefault(preset: GymSeed.GymPreset) {
+    suspend fun ensureDefault(presets: List<GymSeed.GymPreset>) {
         if (db.gyms().count() > 0) return
-        applyPreset(preset, makeActive = true)
+        presets.forEachIndexed { i, preset -> applyPreset(preset, makeActive = i == 0) }
+    }
+
+    /**
+     * Gives every gym a row for every equipment category.
+     *
+     * A gym profile created by an older version has no row for a category added since, and a
+     * missing row reads as "not available" - which would quietly drop, say, every bench
+     * exercise from a gym that plainly has benches.
+     */
+    suspend fun backfillEquipment() {
+        db.gyms().observeAll().first().forEach { gym ->
+            val present = db.gyms().equipment(gym.id).map { it.equipment }.toSet()
+            (Equipment.entries - present).forEach { missing ->
+                db.gyms().upsertEquipment(
+                    GymEquipmentEntity(gymId = gym.id, equipment = missing, available = false)
+                )
+            }
+        }
+    }
+
+    /**
+     * Replaces auto-created gym profiles when the presets themselves change.
+     *
+     * Gyms hold configuration, not training data - sessions reference mesocycles, never a
+     * gym - so rebuilding them loses nothing that was logged. Skipped entirely once you have
+     * added a gym of your own, since at that point the profiles are yours and not a guess.
+     */
+    suspend fun reseedIfStale(presets: List<GymSeed.GymPreset>, stored: Int, current: Int): Boolean {
+        if (stored >= current) return false
+        val existing = db.gyms().observeAll().first()
+        val untouched = existing.size <= presets.size &&
+            existing.all { gym -> presets.any { it.name == gym.name } || existing.size == 1 }
+        if (existing.isNotEmpty() && !untouched) return false
+        existing.forEach { db.gyms().delete(it) }
+        presets.forEachIndexed { i, preset -> applyPreset(preset, makeActive = i == 0) }
+        return true
     }
 
     suspend fun applyPreset(preset: GymSeed.GymPreset, makeActive: Boolean = true): Long {
         val gymId = db.gyms().insert(
-            GymEntity(name = preset.name, units = preset.units, notes = preset.notes)
+            GymEntity(
+                name = preset.name, units = preset.units, notes = preset.notes,
+                barbellIncrement = preset.barbellIncrement,
+            )
         )
         Equipment.entries.forEach { eq ->
             db.gyms().upsertEquipment(
@@ -69,6 +109,11 @@ class GymRepository(private val db: ForgeDatabase) {
 
     suspend fun rename(gym: GymEntity, name: String) = db.gyms().update(gym.copy(name = name))
     suspend fun setUnits(gym: GymEntity, units: Units) = db.gyms().update(gym.copy(units = units))
+    suspend fun setBarbellIncrement(gym: GymEntity, increment: Double?) =
+        db.gyms().update(gym.copy(barbellIncrement = increment?.takeIf { it > 0.0 }))
+
+    /** The active gym's barbell step, in its own units. */
+    suspend fun barbellIncrement(): Double? = active()?.barbellIncrement
     suspend fun setNotes(gym: GymEntity, notes: String?) = db.gyms().update(gym.copy(notes = notes))
     suspend fun makeActive(gymId: Long) = db.gyms().makeActive(gymId)
     suspend fun delete(gym: GymEntity) = db.gyms().delete(gym)

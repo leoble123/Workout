@@ -34,7 +34,11 @@ data class TodayState(
     val sessionsThisWeek: Int = 0,
     val tonnageThisWeek: Double = 0.0,
     val blockComplete: Boolean = false,
-)
+    /** A block exists but has no days - not the same thing as having finished it. */
+    val blockEmpty: Boolean = false,
+) {
+    val hasPlannedSession: Boolean get() = nextDay != null
+}
 
 class TodayViewModel(
     private val program: ProgramRepository,
@@ -64,6 +68,7 @@ class TodayViewModel(
                 sessionsThisWeek = recent.count { it.startedAt >= weekStart },
             )
         }
+        val days = program.days(meso.id)
         val next = workouts.nextUp(meso)
         val preview = next?.let { (day, week) ->
             workouts.prescribe(meso, day, week, excludeSessionId = active?.id ?: -1L)
@@ -82,16 +87,25 @@ class TodayViewModel(
             muscleVolume = volume,
             sessionsThisWeek = recent.count { it.startedAt >= weekStart },
             tonnageThisWeek = tonnage,
-            blockComplete = next == null,
+            // An empty block is a setup problem, not a finished one.
+            blockComplete = days.isNotEmpty() && next == null,
+            blockEmpty = days.isEmpty(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayState())
 
+    /** Starts today's planned session, or resumes one already running. */
     suspend fun startWorkout(): Long? {
         val s = state.value
         workouts.active()?.let { return it.id }
         val meso = s.meso ?: return null
         val day = s.nextDay ?: return null
         return workouts.startSession(meso, day, s.weekIndex, day.day.label)
+    }
+
+    /** Starts a workout with nothing in it. No block, no setup - just train. */
+    suspend fun startEmptyWorkout(): Long {
+        workouts.active()?.let { return it.id }
+        return workouts.startEmptySession("Workout")
     }
 
     /** data class already supplies componentN, which is all the destructuring above needs. */

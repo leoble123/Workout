@@ -17,7 +17,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Info
@@ -38,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.leo.forge.data.prefs.ForgeSettings
+import com.leo.forge.data.db.entity.SessionExerciseEntity
 import com.leo.forge.data.repo.ExercisePlanUi
 import com.leo.forge.domain.model.*
 import com.leo.forge.domain.progression.SetTarget
@@ -61,6 +64,9 @@ fun SessionScreen(
     val listState = rememberLazyListState()
     var showFinish by remember { mutableStateOf(false) }
     var showAbandon by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
+    var swapTarget by remember { mutableStateOf<SessionExerciseEntity?>(null) }
+    val picker by vm.picker.collectAsStateWithLifecycle()
 
     BackHandler { showAbandon = true }
 
@@ -95,7 +101,7 @@ fun SessionScreen(
                 )
             }
 
-            itemsIndexed(state.plans, key = { _, p -> p.planned.id }) { index, plan ->
+            itemsIndexed(state.plans, key = { _, p -> p.id }) { index, plan ->
                 ExerciseBlock(
                     plan = plan,
                     state = state,
@@ -110,15 +116,27 @@ fun SessionScreen(
                         vm.logSet(plan, si, settings.autoStartRest, next)
                     },
                     onUndo = { vm.undo(it) },
+                    onAddSet = { plan.sessionExercise?.let { vm.changeSets(it, 1) } },
+                    onRemoveSet = { plan.sessionExercise?.let { vm.changeSets(it, -1) } },
+                    onSwap = { swapTarget = plan.sessionExercise },
+                    onRemove = { plan.sessionExercise?.let { vm.removeExercise(it) } },
                 )
+            }
+
+            item {
+                Spacer(Modifier.height(4.dp))
+                SecondaryButton(
+                    "Add exercise",
+                    Modifier.fillMaxWidth(),
+                    icon = Icons.Rounded.Add,
+                ) { showPicker = true }
             }
 
             if (!state.loading && state.plans.isEmpty()) {
                 item {
                     EmptyState(
-                        "Nothing planned",
-                        "This session has no exercises attached. Build a block on the Program tab and the " +
-                            "day will fill itself in.",
+                        "Empty workout",
+                        "Add an exercise and Forge fills in the weights from the last time you did it.",
                     )
                 }
             }
@@ -154,6 +172,36 @@ fun SessionScreen(
                 }
             }
         }
+    }
+
+    if (showPicker) {
+        ExercisePickerSheet(
+            library = picker.library,
+            availableIds = picker.availableIds,
+            title = "Add exercises",
+            confirmLabel = "Add",
+            multiSelect = true,
+            onDismiss = { showPicker = false },
+            onConfirm = { ids ->
+                ids.forEach(vm::addExercise)
+                showPicker = false
+            },
+        )
+    }
+
+    swapTarget?.let { target ->
+        ExercisePickerSheet(
+            library = picker.library,
+            availableIds = picker.availableIds,
+            title = "Swap for",
+            confirmLabel = "Swap",
+            multiSelect = false,
+            onDismiss = { swapTarget = null },
+            onConfirm = { ids ->
+                ids.firstOrNull()?.let { vm.swapExercise(target, it) }
+                swapTarget = null
+            },
+        )
     }
 
     if (showFinish) {
@@ -196,7 +244,7 @@ fun SessionScreen(
 private fun nextLabelAfter(state: SessionUiState, plan: ExercisePlanUi, setIndex: Int): String {
     val remainingHere = plan.prescription.targets.count { it.setIndex > setIndex }
     if (remainingHere > 0) return "${plan.exercise.name} · set ${setIndex + 2}"
-    val idx = state.plans.indexOfFirst { it.planned.id == plan.planned.id }
+    val idx = state.plans.indexOfFirst { it.id == plan.id }
     return state.plans.getOrNull(idx + 1)?.exercise?.name ?: "Last set done"
 }
 
@@ -268,8 +316,13 @@ private fun ExerciseBlock(
     onRir: (Int, Int) -> Unit,
     onLog: (Int) -> Unit,
     onUndo: (com.leo.forge.data.db.entity.SetLogEntity) -> Unit,
+    onAddSet: () -> Unit,
+    onRemoveSet: () -> Unit,
+    onSwap: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     var showWhy by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
     val targets = plan.prescription.targets
 
     ForgeCard(
@@ -287,7 +340,7 @@ private fun ExerciseBlock(
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Chip(plan.exercise.primaryMuscle.display)
-                        Chip("${plan.planned.repLow}-${plan.planned.repHigh} reps")
+                        Chip("${plan.repLow}-${plan.repHigh} reps")
                         Chip("RIR ${targets.firstOrNull()?.targetRir ?: 2}")
                     }
                 }
@@ -298,6 +351,36 @@ private fun ExerciseBlock(
                         tint = if (showWhy) Forge.colors.accent else Forge.colors.textTertiary,
                         modifier = Modifier.size(20.dp),
                     )
+                }
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            Icons.Rounded.MoreVert, "More",
+                            tint = Forge.colors.textTertiary, modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        containerColor = Forge.colors.surface3,
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Add a set", color = Forge.colors.textPrimary) },
+                            onClick = { showMenu = false; onAddSet() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Remove a set", color = Forge.colors.textPrimary) },
+                            onClick = { showMenu = false; onRemoveSet() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Swap exercise", color = Forge.colors.textPrimary) },
+                            onClick = { showMenu = false; onSwap() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Remove exercise", color = Forge.colors.danger) },
+                            onClick = { showMenu = false; onRemove() },
+                        )
+                    }
                 }
             }
 
@@ -316,7 +399,7 @@ private fun ExerciseBlock(
 
             targets.forEach { target ->
                 val logged = state.loggedSet(plan.exercise.id, target.setIndex)
-                val isActive = state.nextFocus == (state.plans.indexOfFirst { it.planned.id == plan.planned.id } to target.setIndex)
+                val isActive = state.nextFocus == (state.plans.indexOfFirst { it.id == plan.id } to target.setIndex)
                 SetRow(
                     target = target,
                     entry = state.entries[state.key(plan.exercise.id, target.setIndex)],

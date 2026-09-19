@@ -16,6 +16,12 @@ data class ExerciseEntity(
     val primaryMuscle: Muscle,
     val secondaryMuscles: List<Muscle> = emptyList(),
     val equipment: Equipment,
+    /**
+     * Extra kit the movement cannot be done without. A barbell alone does not give you a
+     * back squat - you also need something to unrack it from - and "barbell available"
+     * would otherwise prescribe lifts that are physically impossible in the room.
+     */
+    val requiresAlso: List<Equipment> = emptyList(),
     val pattern: MovementPattern,
     val isUnilateral: Boolean = false,
     val repLow: Int = 8,
@@ -97,6 +103,33 @@ data class SessionEntity(
     /** Denormalised so history lists never have to sum thousands of set rows. */
     val totalVolumeKg: Double = 0.0,
     val totalSets: Int = 0,
+)
+
+/**
+ * An exercise as it appears in one actual session.
+ *
+ * Both planned and freestyle workouts materialise into these rows, so the session screen has
+ * a single source of truth and adding, swapping or dropping an exercise mid-workout works the
+ * same either way. Without it a session was only ever a read-only view of a planned day, and
+ * training without a mesocycle was impossible.
+ */
+@Entity(
+    tableName = "session_exercises",
+    foreignKeys = [
+        ForeignKey(entity = SessionEntity::class, parentColumns = ["id"], childColumns = ["sessionId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = ExerciseEntity::class, parentColumns = ["id"], childColumns = ["exerciseId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index("sessionId"), Index("exerciseId")],
+)
+data class SessionExerciseEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: Long,
+    val exerciseId: String,
+    val orderIndex: Int,
+    val targetSets: Int = 3,
+    val repLow: Int = 8,
+    val repHigh: Int = 12,
+    val restSeconds: Int = 150,
 )
 
 @Entity(

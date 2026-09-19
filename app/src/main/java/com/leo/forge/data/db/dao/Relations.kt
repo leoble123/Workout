@@ -20,3 +20,13 @@ data class SessionWithSets(
 data class TimePoint(val at: Long, val value: Double)
 
 data class MuscleVolume(val muscle: Muscle, val sets: Int, val volume: Double)
+
+/** All-time bests for one exercise. */
+data class ExerciseRecord(
+    val exerciseId: String,
+    val bestE1rm: Double,
+    val bestWeight: Double,
+    val lastTrained: Long,
+    val totalSets: Int,
+    val totalVolume: Double,
+)

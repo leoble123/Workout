@@ -125,6 +125,24 @@ interface SessionDao {
 }
 
 @Dao
+interface SessionExerciseDao {
+
+    @Query("SELECT * FROM session_exercises WHERE sessionId = :sessionId ORDER BY orderIndex, id")
+    fun observeForSession(sessionId: Long): Flow<List<SessionExerciseEntity>>
+
+    @Query("SELECT * FROM session_exercises WHERE sessionId = :sessionId ORDER BY orderIndex, id")
+    suspend fun forSession(sessionId: Long): List<SessionExerciseEntity>
+
+    @Query("SELECT COUNT(*) FROM session_exercises WHERE sessionId = :sessionId")
+    suspend fun countFor(sessionId: Long): Int
+
+    @Insert suspend fun insert(e: SessionExerciseEntity): Long
+    @Insert suspend fun insertAll(e: List<SessionExerciseEntity>)
+    @Update suspend fun update(e: SessionExerciseEntity)
+    @Delete suspend fun delete(e: SessionExerciseEntity)
+}
+
+@Dao
 interface SetLogDao {
     @Query("SELECT * FROM set_logs WHERE sessionId = :sessionId ORDER BY setIndex")
     fun observeForSession(sessionId: Long): Flow<List<SetLogEntity>>
@@ -194,6 +212,30 @@ interface SetLogDao {
 
     @Query("SELECT COUNT(*) FROM set_logs")
     suspend fun count(): Int
+
+    @Query("DELETE FROM set_logs WHERE sessionId = :sessionId AND exerciseId = :exerciseId")
+    suspend fun clearExerciseInSession(sessionId: Long, exerciseId: String)
+
+    /** All-time bests per exercise, so records never require scrolling a history feed. */
+    @Query(
+        """
+        SELECT exerciseId AS exerciseId,
+               MAX(e1rmKg) AS bestE1rm,
+               MAX(weightKg) AS bestWeight,
+               MAX(completedAt) AS lastTrained,
+               COUNT(*) AS totalSets,
+               COALESCE(SUM(weightKg * reps), 0) AS totalVolume
+        FROM set_logs WHERE type = 'WORKING' AND reps > 0
+        GROUP BY exerciseId
+        """
+    )
+    fun observeRecords(): Flow<List<ExerciseRecord>>
+
+    @Query("SELECT * FROM set_logs WHERE exerciseId = :exerciseId AND type = 'WORKING' ORDER BY e1rmKg DESC LIMIT 1")
+    fun observeTopSet(exerciseId: String): Flow<SetLogEntity?>
+
+    @Query("SELECT * FROM set_logs WHERE exerciseId = :exerciseId AND type = 'WORKING' ORDER BY completedAt DESC LIMIT :limit")
+    fun observeSetsFor(exerciseId: String, limit: Int = 300): Flow<List<SetLogEntity>>
 }
 
 @Dao

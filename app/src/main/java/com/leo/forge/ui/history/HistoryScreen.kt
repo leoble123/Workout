@@ -28,8 +28,9 @@ private val monthFormat = DateTimeFormatter.ofPattern("MMMM yyyy")
 
 private fun Long.toLocalDate() = Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).toLocalDate()
 
+/** The session feed. Rendered inside Progress, so it carries no page title of its own. */
 @Composable
-fun HistoryScreen(
+fun HistoryList(
     onOpenSession: (Long) -> Unit,
     vm: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory),
 ) {
@@ -37,13 +38,9 @@ fun HistoryScreen(
 
     LazyColumn(
         Modifier.fillMaxSize().background(Forge.colors.background),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 28.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
-            Text("History", style = MaterialTheme.typography.headlineLarge, color = Forge.colors.textPrimary)
-        }
-
         if (state.sessions.isEmpty()) {
             item {
                 ForgeCard(Modifier.fillMaxWidth()) {

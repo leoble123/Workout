@@ -27,6 +27,8 @@ object GymSeed {
         val equipment: Map<Equipment, Boolean>,
         val equipmentDetail: Map<Equipment, String> = emptyMap(),
         val stations: List<StationPreset>,
+        /** Two of the smallest plate this gym stocks, in [units]. Null uses the default. */
+        val barbellIncrement: Double? = null,
     )
 
     /** Everything a two-arm adjustable pulley can do, taken straight from the library. */
@@ -42,19 +44,31 @@ object GymSeed {
     )
 
     /**
-     * A sparse, cable-led gym. Machine categories are deliberately off: the two machine
-     * movements that exist come from the combo station rather than from a blanket
-     * "has machines", so the generator never sends you to a leg extension that isn't there.
+     * A sparse, cable-led gym: cables, dumbbells, benches and loose barbells, but no rack
+     * and no leg machines.
+     *
+     * Machine categories are deliberately off - the two machine movements that exist come
+     * from the combo station rather than from a blanket "has machines". RACK being off is
+     * what keeps back squats and barbell bench out of a generated session: a loose barbell
+     * with nothing to unrack from does not give you either.
      */
-    fun cableLedGym(units: Units) = GymPreset(
-        name = "My gym",
+    fun minimalCableGym(
+        name: String,
+        units: Units,
+        barbellIncrement: Double? = null,
+    ) = GymPreset(
+        name = name,
         units = units,
-        notes = "Minimal, cable-led. Rename the stations to whatever they actually say on them.",
+        notes = "Cables, dumbbells, benches and loose barbells. No rack. " +
+            "Rename the stations to whatever they actually say on them.",
+        barbellIncrement = barbellIncrement,
         equipment = mapOf(
             Equipment.CABLE to true,
             Equipment.DUMBBELL to true,
+            Equipment.BENCH to true,
+            Equipment.BARBELL to true,
             Equipment.BODYWEIGHT to true,
-            Equipment.BARBELL to false,
+            Equipment.RACK to false,
             Equipment.EZ_BAR to false,
             Equipment.TRAP_BAR to false,
             Equipment.KETTLEBELL to false,
@@ -68,13 +82,14 @@ object GymSeed {
             Equipment.OTHER to false,
         ),
         equipmentDetail = mapOf(
-            Equipment.CABLE to "Genesis stations — see below.",
+            Equipment.CABLE to "Genesis stations - see below.",
+            Equipment.BARBELL to "Loose bars, no rack. Light bar.",
         ),
         stations = listOf(
             StationPreset(
                 name = "Dual-arm cable / functional trainer",
                 brand = "Genesis",
-                notes = "Two adjustable pulleys. The workhorse — most of the programme runs off this one.",
+                notes = "Two adjustable pulleys. The workhorse - most of the programme runs off this one.",
                 exerciseIds = cableExerciseIds,
             ),
             StationPreset(
@@ -95,11 +110,28 @@ object GymSeed {
     )
 
     /** A fully-equipped commercial gym: everything on, no stations needed. */
-    fun fullGym(units: Units) = GymPreset(
-        name = "Commercial gym",
+    fun fullGym(units: Units, name: String = "Commercial gym") = GymPreset(
+        name = name,
         units = units,
         notes = null,
         equipment = Equipment.entries.associateWith { true },
         stations = emptyList(),
+    )
+
+    /**
+     * The profiles created on first run. The first is made active.
+     *
+     * Two gyms rather than one because the point of the profile is switching: travel
+     * changes what is on the floor and what the plates are marked in, and re-ticking
+     * fifteen categories on arrival is precisely the friction worth removing.
+     */
+    fun defaults(): List<GymPreset> = listOf(
+        minimalCableGym(
+            name = "Current gym (Australia)",
+            units = Units.LB,
+            // Smallest plate stocked is 2.5 lb, so the smallest honest jump is a pair of them.
+            barbellIncrement = 5.0,
+        ),
+        fullGym(Units.LB, name = "Home gym (USA)"),
     )
 }

@@ -20,6 +20,7 @@ data class ForgeSettings(
     val keepScreenOn: Boolean = false,
     val restNudgeSeconds: Int = 15,
     val onboarded: Boolean = false,
+    val gymSeedVersion: Int = 0,
 )
 
 class SettingsStore(private val context: Context) {
@@ -34,6 +35,7 @@ class SettingsStore(private val context: Context) {
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val NUDGE = intPreferencesKey("rest_nudge")
         val ONBOARDED = booleanPreferencesKey("onboarded")
+        val GYM_SEED = intPreferencesKey("gym_seed_version")
     }
 
     val settings: Flow<ForgeSettings> = context.dataStore.data.map { p ->
@@ -47,6 +49,7 @@ class SettingsStore(private val context: Context) {
             keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: false,
             restNudgeSeconds = p[Keys.NUDGE] ?: 15,
             onboarded = p[Keys.ONBOARDED] ?: false,
+            gymSeedVersion = p[Keys.GYM_SEED] ?: 0,
         )
     }
 
@@ -58,6 +61,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setSound(v: Boolean) = edit { it[Keys.SOUND] = v }
     suspend fun setKeepScreenOn(v: Boolean) = edit { it[Keys.KEEP_SCREEN_ON] = v }
     suspend fun setOnboarded(v: Boolean) = edit { it[Keys.ONBOARDED] = v }
+    suspend fun setGymSeedVersion(v: Int) = edit { it[Keys.GYM_SEED] = v }
 
     private suspend fun edit(block: (MutablePreferences) -> Unit) {
         context.dataStore.edit(block)

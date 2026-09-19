@@ -13,6 +13,31 @@ Usage: python3 tools/verify_migration.py <from_version> <to_version>
 import json, re, sqlite3, sys, pathlib
 
 SCHEMA_DIR = pathlib.Path("app/schemas/com.leo.forge.data.db.ForgeDatabase")
+
+_EX = ("INSERT INTO exercises (id,name,primaryMuscle,secondaryMuscles,equipment,pattern,"
+       "isUnilateral,repLow,repHigh,loadIncrementKg,isCustom,isFavorite,archived) VALUES ")
+
+# Rows present before each migration, and what it must do to them.
+SEED = {
+    1: [
+        _EX + "('leg_press','Leg Press','QUADS','','MACHINE','SQUAT',0,8,20,5.0,0,0,0)",
+        _EX + "('pec_deck','Pec Deck','CHEST','','MACHINE','ISOLATION',0,10,15,5.0,0,0,0)",
+    ],
+    2: [
+        _EX + "('back_squat','Back Squat','QUADS','','BARBELL','SQUAT',0,5,10,2.5,0,0,0)",
+        _EX + "('barbell_bench_press','Barbell Bench Press','CHEST','','BARBELL','HORIZONTAL_PUSH',0,5,10,2.5,0,0,0)",
+        _EX + "('cable_curl','Cable Curl','BICEPS','','CABLE','ISOLATION',0,10,15,2.5,0,0,0)",
+        "INSERT INTO gyms (name,units,isActive,createdAt) VALUES ('Test','LB',1,0)",
+    ],
+}
+
+REWRITES = {
+    (1, 2): [("SELECT id, equipment FROM exercises", "equipment",
+              {"leg_press": "MACHINE_PLATE_LOADED", "pec_deck": "MACHINE_SELECTORIZED"})],
+    (2, 3): [("SELECT id, requiresAlso FROM exercises", "requiresAlso",
+              # a squat needs something to unrack from; a bench press needs both
+              {"back_squat": "RACK", "barbell_bench_press": "RACK,BENCH", "cable_curl": ""})],
+}
 MIGRATIONS = pathlib.Path("app/src/main/java/com/leo/forge/data/db/Migrations.kt")
 
 
@@ -30,8 +55,11 @@ def create_statements(db):
 
 
 def migration_statements(frm, to):
+    """Statements belonging to this migration only - the file holds several."""
     src = MIGRATIONS.read_text()
-    block = src[src.index(f"MIGRATION_{frm}_{to}"):]
+    start = src.index(f"MIGRATION_{frm}_{to}")
+    nxt = src.find("val MIGRATION_", start + 1)
+    block = src[start:] if nxt == -1 else src[start:nxt]
     return [m.group(1).replace('\\"', '"') for m in re.finditer(r'db\.execSQL\("((?:[^"\\]|\\.)*)"\)', block)]
 
 
@@ -58,17 +86,12 @@ def main():
     frm, to = int(sys.argv[1]), int(sys.argv[2])
     old, new = load(frm), load(to)
 
-    # Path A: old schema + migration
+    # Path A: old schema + seed rows the migration should rewrite + the migration itself
     a = sqlite3.connect(":memory:")
     for s in create_statements(old):
         a.execute(s)
-    # a row that the migration is supposed to rewrite
-    a.execute("INSERT INTO exercises (id,name,primaryMuscle,secondaryMuscles,equipment,pattern,"
-              "isUnilateral,repLow,repHigh,loadIncrementKg,isCustom,isFavorite,archived) "
-              "VALUES ('leg_press','Leg Press','QUADS','','MACHINE','SQUAT',0,8,20,5.0,0,0,0)")
-    a.execute("INSERT INTO exercises (id,name,primaryMuscle,secondaryMuscles,equipment,pattern,"
-              "isUnilateral,repLow,repHigh,loadIncrementKg,isCustom,isFavorite,archived) "
-              "VALUES ('pec_deck','Pec Deck','CHEST','','MACHINE','ISOLATION',0,10,15,5.0,0,0,0)")
+    for s in SEED.get(frm, []):
+        a.execute(s)
     for s in migration_statements(frm, to):
         a.execute(s)
 
@@ -91,11 +114,11 @@ def main():
                 problems.append(f"{table}.{key}\n    after migration: {got[table][key]}\n    expected:        {want[table][key]}")
 
     # data rewrites
-    rows = dict(a.execute("SELECT id, equipment FROM exercises"))
-    if rows.get("leg_press") != "MACHINE_PLATE_LOADED":
-        problems.append(f"leg_press equipment is {rows.get('leg_press')}, expected MACHINE_PLATE_LOADED")
-    if rows.get("pec_deck") != "MACHINE_SELECTORIZED":
-        problems.append(f"pec_deck equipment is {rows.get('pec_deck')}, expected MACHINE_SELECTORIZED")
+    for sql, column, expected in REWRITES.get((frm, to), []):
+        got_value = dict(a.execute(sql))
+        for key, want_value in expected.items():
+            if got_value.get(key) != want_value:
+                problems.append(f"{key}.{column} is {got_value.get(key)!r}, expected {want_value!r}")
 
     if problems:
         print(f"MIGRATION {frm} -> {to}: FAILED")

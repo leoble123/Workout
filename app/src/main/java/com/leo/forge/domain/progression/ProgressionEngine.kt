@@ -81,10 +81,11 @@ object ProgressionEngine {
         repLow: Int = exercise.repLow,
         repHigh: Int = exercise.repHigh,
         units: Units = Units.KG,
+        gymBarbellIncrement: Double? = null,
     ): ExercisePrescription {
         val targetRir = rirForWeek(weekIndex, totalWeeks)
         val deload = isDeloadWeek(weekIndex, totalWeeks)
-        val step = Load.increment(exercise.equipment, units, exercise.loadIncrementKg)
+        val step = Load.increment(exercise.equipment, units, exercise.loadIncrementKg, gymBarbellIncrement)
         val u = units.display
 
         fun show(displayValue: Double) = "${Load.format(displayValue)} $u"

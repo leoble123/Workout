@@ -70,6 +70,28 @@ class UnitProgressionTest {
     }
 
     @Test
+    fun `a gym that only stocks small plates gets its own step`() {
+        // 11 / 5 / 2.5 lb plates: the smallest honest jump is a pair of 2.5s.
+        val p = ProgressionEngine.prescribe(
+            bench, listOf(set(10, 100.0, 3)), setCount = 1, weekIndex = 0, totalWeeks = 5,
+            units = Units.LB, gymBarbellIncrement = 5.0,
+        )
+        val lb = Load.toDisplay(p.targets.single().weightKg, Units.LB)
+        assertEquals(0.0, lb % 5.0, 0.01)
+    }
+
+    @Test
+    fun `a gym override does not leak onto the cable stack`() {
+        val cable = bench.copy(id = "c", equipment = Equipment.CABLE, loadIncrementKg = 2.5)
+        assertEquals(
+            Load.incrementLb(Equipment.CABLE),
+            Load.increment(Equipment.CABLE, Units.LB, 2.5, gymBarbellIncrement = 5.0),
+            0.001,
+        )
+        assertEquals("c", cable.id)
+    }
+
+    @Test
     fun `the deload is loadable too`() {
         val p = ProgressionEngine.prescribe(
             bench, listOf(set(8, 100.0, 1)), setCount = 1,

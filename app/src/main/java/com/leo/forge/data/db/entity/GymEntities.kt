@@ -21,6 +21,12 @@ data class GymEntity(
     val units: Units = Units.KG,
     val isActive: Boolean = false,
     val notes: String? = null,
+    /**
+     * Smallest barbell jump actually achievable here, in this gym's [units] - two of the
+     * smallest plate it stocks. Null falls back to the standard for the implement. A gym
+     * whose smallest plate is 2.5 lb cannot make the 2.5 kg jump the default assumes.
+     */
+    val barbellIncrement: Double? = null,
     val createdAt: Long = System.currentTimeMillis(),
 )
 

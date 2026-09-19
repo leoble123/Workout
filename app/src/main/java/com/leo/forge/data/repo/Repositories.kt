@@ -19,11 +19,19 @@ import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 import kotlin.math.ceil
 
+/**
+ * One exercise as the UI needs it: what it is, what to hit, and where it came from.
+ *
+ * [sessionExercise] is set for a live workout and null for the read-only preview on Today.
+ */
 @Immutable
 data class ExercisePlanUi(
-    val planned: PlannedExerciseEntity,
+    val id: Long,
     val exercise: ExerciseEntity,
+    val repLow: Int,
+    val repHigh: Int,
     val prescription: ExercisePrescription,
+    val sessionExercise: SessionExerciseEntity? = null,
 )
 
 class ExerciseRepository(private val db: ForgeDatabase) {
@@ -113,10 +121,28 @@ class ProgramRepository(private val db: ForgeDatabase, private val gyms: GymRepo
 
     suspend fun removePlanned(p: PlannedExerciseEntity) = db.mesocycles().deletePlanned(p)
 
+    /** Swaps one exercise for another in the block, keeping its slot and set count. */
+    suspend fun swapPlanned(p: PlannedExerciseEntity, newExerciseId: String) {
+        val replacement = db.exercises().byId(newExerciseId) ?: return
+        db.mesocycles().updatePlanned(
+            p.copy(
+                exerciseId = newExerciseId,
+                repLow = replacement.repLow,
+                repHigh = replacement.repHigh,
+                restSeconds = ProgressionEngine.restSecondsFor(replacement),
+            )
+        )
+    }
+
     suspend fun updateMeso(m: MesocycleEntity) = db.mesocycles().update(m)
 }
 
 class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepository) {
+
+    private companion object {
+        /** Long enough that a block-less session is never treated as a deload week. */
+        const val NO_BLOCK_WEEKS = 99
+    }
 
     fun observeActive(): Flow<SessionEntity?> = db.sessions().observeActive()
     fun observeRecent(limit: Int = 100): Flow<List<SessionEntity>> = db.sessions().observeRecent(limit)
@@ -183,6 +209,7 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
         }
 
         val units = gyms.units()
+        val barbellStep = gyms.barbellIncrement()
         val todayByMuscle = day.exercises.groupBy { muscleOf(it) }
         val setsPerPlanned = mutableMapOf<Long, Int>()
 
@@ -202,8 +229,10 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
             val setCount = setsPerPlanned[planned.id] ?: planned.baseSets
             val last = db.setLogs().lastPerformance(exercise.id, excludeSessionId)
             ExercisePlanUi(
-                planned = planned,
+                id = planned.id,
                 exercise = exercise,
+                repLow = planned.repLow,
+                repHigh = planned.repHigh,
                 prescription = ProgressionEngine.prescribe(
                     exercise = exercise,
                     lastSets = last,
@@ -213,14 +242,23 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
                     repLow = planned.repLow,
                     repHigh = planned.repHigh,
                     units = units,
+                    gymBarbellIncrement = barbellStep,
                 ),
             )
         }
     }
 
+    // ---- starting a workout ------------------------------------------------------
+
+    /**
+     * Starts a planned session and materialises its exercises.
+     *
+     * Materialising matters: the session owns its own exercise list from this point, so the
+     * plan can be deviated from - swapped, trimmed, extended - without editing the block.
+     */
     suspend fun startSession(meso: MesocycleEntity?, day: PlannedDayWithExercises?, weekIndex: Int, label: String): Long {
         db.sessions().active()?.let { return it.id }
-        return db.sessions().insert(
+        val sessionId = db.sessions().insert(
             SessionEntity(
                 mesocycleId = meso?.id,
                 plannedDayId = day?.day?.id,
@@ -230,6 +268,118 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
                 status = SessionStatus.IN_PROGRESS,
             )
         )
+        if (meso != null && day != null) {
+            val planned = prescribe(meso, day, weekIndex, excludeSessionId = sessionId)
+            db.sessionExercises().insertAll(
+                planned.mapIndexed { i, plan ->
+                    SessionExerciseEntity(
+                        sessionId = sessionId,
+                        exerciseId = plan.exercise.id,
+                        orderIndex = i,
+                        targetSets = plan.prescription.targets.size,
+                        repLow = plan.repLow,
+                        repHigh = plan.repHigh,
+                        restSeconds = plan.prescription.restSeconds,
+                    )
+                }
+            )
+        }
+        return sessionId
+    }
+
+    /** An empty workout: no block required. Exercises get added as you go. */
+    suspend fun startEmptySession(label: String = "Workout"): Long {
+        db.sessions().active()?.let { return it.id }
+        return db.sessions().insert(
+            SessionEntity(
+                label = label,
+                startedAt = System.currentTimeMillis(),
+                status = SessionStatus.IN_PROGRESS,
+            )
+        )
+    }
+
+    // ---- exercises inside a live session -------------------------------------------
+
+    fun observeSessionExercises(sessionId: Long): Flow<List<SessionExerciseEntity>> =
+        db.sessionExercises().observeForSession(sessionId)
+
+    suspend fun addExerciseToSession(sessionId: Long, exerciseId: String) {
+        val exercise = db.exercises().byId(exerciseId) ?: return
+        db.sessionExercises().insert(
+            SessionExerciseEntity(
+                sessionId = sessionId,
+                exerciseId = exerciseId,
+                orderIndex = db.sessionExercises().countFor(sessionId),
+                targetSets = 3,
+                repLow = exercise.repLow,
+                repHigh = exercise.repHigh,
+                restSeconds = ProgressionEngine.restSecondsFor(exercise),
+            )
+        )
+    }
+
+    /** Removing an exercise also drops whatever was logged against it in this session. */
+    suspend fun removeSessionExercise(item: SessionExerciseEntity) {
+        db.setLogs().clearExerciseInSession(item.sessionId, item.exerciseId)
+        db.sessionExercises().delete(item)
+        recomputeTotals(item.sessionId)
+    }
+
+    suspend fun swapSessionExercise(item: SessionExerciseEntity, newExerciseId: String) {
+        val replacement = db.exercises().byId(newExerciseId) ?: return
+        db.setLogs().clearExerciseInSession(item.sessionId, item.exerciseId)
+        db.sessionExercises().update(
+            item.copy(
+                exerciseId = newExerciseId,
+                repLow = replacement.repLow,
+                repHigh = replacement.repHigh,
+                restSeconds = ProgressionEngine.restSecondsFor(replacement),
+            )
+        )
+        recomputeTotals(item.sessionId)
+    }
+
+    suspend fun changeTargetSets(item: SessionExerciseEntity, delta: Int) {
+        db.sessionExercises().update(item.copy(targetSets = (item.targetSets + delta).coerceIn(1, 10)))
+    }
+
+    /**
+     * Targets for everything in a live session.
+     *
+     * Freestyle sessions have no mesocycle, so there is no deload to be in and no week to
+     * tighten RIR against; they run at the block-opening target of three in reserve.
+     */
+    suspend fun prescribeSession(sessionId: Long): List<ExercisePlanUi> {
+        val session = db.sessions().byId(sessionId) ?: return emptyList()
+        val meso = session.mesocycleId?.let { db.mesocycles().byId(it) }
+        val units = gyms.units()
+        val barbellStep = gyms.barbellIncrement()
+        val items = db.sessionExercises().forSession(sessionId)
+        val library = db.exercises().byIds(items.map { it.exerciseId }).associateBy { it.id }
+
+        return items.mapNotNull { item ->
+            val exercise = library[item.exerciseId] ?: return@mapNotNull null
+            val last = db.setLogs().lastPerformance(exercise.id, sessionId)
+            ExercisePlanUi(
+                id = item.id,
+                exercise = exercise,
+                repLow = item.repLow,
+                repHigh = item.repHigh,
+                sessionExercise = item,
+                prescription = ProgressionEngine.prescribe(
+                    exercise = exercise,
+                    lastSets = last,
+                    setCount = item.targetSets,
+                    weekIndex = session.weekIndex,
+                    totalWeeks = meso?.totalWeeks ?: NO_BLOCK_WEEKS,
+                    repLow = item.repLow,
+                    repHigh = item.repHigh,
+                    units = units,
+                    gymBarbellIncrement = barbellStep,
+                ),
+            )
+        }
     }
 
     /** Logs one set and returns whether it was a personal best on that exercise. */
@@ -334,6 +484,10 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
 }
 
 class StatsRepository(private val db: ForgeDatabase) {
+
+    fun records(): Flow<List<com.leo.forge.data.db.dao.ExerciseRecord>> = db.setLogs().observeRecords()
+    fun topSet(exerciseId: String): Flow<com.leo.forge.data.db.entity.SetLogEntity?> = db.setLogs().observeTopSet(exerciseId)
+    fun setsFor(exerciseId: String): Flow<List<com.leo.forge.data.db.entity.SetLogEntity>> = db.setLogs().observeSetsFor(exerciseId)
 
     fun muscleVolumeSince(since: Long): Flow<List<MuscleVolume>> = db.setLogs().observeMuscleVolumeSince(since)
     fun tonnageSince(since: Long): Flow<Double> = db.setLogs().observeTonnageSince(since)

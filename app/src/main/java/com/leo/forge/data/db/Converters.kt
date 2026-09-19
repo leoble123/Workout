@@ -22,6 +22,13 @@ class Converters {
     @TypeConverter fun equipmentToString(v: Equipment?): String? = v?.name
     @TypeConverter fun stringToEquipment(v: String?): Equipment? = v?.let { runCatching { Equipment.valueOf(it) }.getOrNull() }
 
+    @TypeConverter
+    fun equipmentListToString(v: List<Equipment>?): String = v.orEmpty().joinToString(",") { it.name }
+
+    @TypeConverter
+    fun stringToEquipmentList(v: String?): List<Equipment> =
+        v?.split(',')?.mapNotNull { s -> s.trim().takeIf { it.isNotEmpty() }?.let { runCatching { Equipment.valueOf(it) }.getOrNull() } }.orEmpty()
+
     @TypeConverter fun patternToString(v: MovementPattern?): String? = v?.name
     @TypeConverter fun stringToPattern(v: String?): MovementPattern? = v?.let { runCatching { MovementPattern.valueOf(it) }.getOrNull() }
 

@@ -8,12 +8,14 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.leo.forge.core.container
 import com.leo.forge.data.db.entity.MesocycleEntity
 import com.leo.forge.data.db.entity.SessionEntity
+import com.leo.forge.data.db.entity.SessionExerciseEntity
 import com.leo.forge.data.db.entity.SetLogEntity
 import com.leo.forge.data.repo.ExercisePlanUi
 import com.leo.forge.data.repo.GymRepository
 import com.leo.forge.data.repo.ProgramRepository
 import com.leo.forge.data.repo.WorkoutRepository
 import com.leo.forge.domain.model.*
+import com.leo.forge.domain.model.Load
 import com.leo.forge.timer.RestState
 import com.leo.forge.timer.RestTimer
 import kotlinx.coroutines.flow.*
@@ -65,12 +67,25 @@ data class SessionUiState(
         get() = plans.map { it.exercise.primaryMuscle }.distinct()
 }
 
+/** Everything the exercise picker needs: the library, and what this gym can actually do. */
+@Immutable
+data class PickerData(
+    val library: List<com.leo.forge.data.db.entity.ExerciseEntity> = emptyList(),
+    val availableIds: Set<String>? = null,
+)
+
 class SessionViewModel(
     private val workouts: WorkoutRepository,
     private val program: ProgramRepository,
     private val gyms: GymRepository,
+    exercises: com.leo.forge.data.repo.ExerciseRepository,
     private val restTimer: RestTimer,
 ) : ViewModel() {
+
+    val picker: StateFlow<PickerData> = combine(
+        exercises.observeAll(), gyms.observeAvailableExerciseIds(),
+    ) { library, ids -> PickerData(library, ids) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PickerData())
 
     private val units = MutableStateFlow(Units.KG)
 
@@ -100,36 +115,68 @@ class SessionViewModel(
         .combine(dismissed) { s, d -> s.copy(dismissed = d) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionUiState())
 
+    private val sessionExercises: Flow<List<SessionExerciseEntity>> = sessionFlow.flatMapLatest { s ->
+        if (s == null) flowOf(emptyList()) else workouts.observeSessionExercises(s.id)
+    }
+
     init {
         viewModelScope.launch {
-            // Prescriptions are computed once, when the session opens. Recomputing them as
-            // sets land would let the targets move under you mid-workout.
             val session = sessionFlow.filterNotNull().first()
-            val u = gyms.units()
-            units.value = u
-            // By id: reopening a session from a finished block must not silently
-            // re-plan it against whatever block is active now.
-            val m = session.mesocycleId?.let { program.mesocycle(it) }
-            meso.value = m
-            val day = if (m == null) null else session.plannedDayId?.let { id ->
-                program.days(m.id).firstOrNull { it.day.id == id }
-            }
-            if (m != null && day != null) {
-                val computed = workouts.prescribe(m, day, session.weekIndex, excludeSessionId = session.id)
-                plans.value = computed
-                entries.value = computed.flatMap { plan ->
-                    plan.prescription.targets.map { t ->
-                        "${plan.exercise.id}:${t.setIndex}" to SetEntry(
+            units.value = gyms.units()
+            meso.value = session.mesocycleId?.let { program.mesocycle(it) }
+
+            // Recompute targets when the exercise list or a set count changes - but never
+            // when a set is logged, or the numbers would shift under you mid-workout.
+            sessionExercises
+                .map { list -> list.map { Triple(it.id, it.exerciseId, it.targetSets) } }
+                .distinctUntilChanged()
+                .collect {
+                    val current = sessionFlow.value ?: return@collect
+                    val computed = workouts.prescribeSession(current.id)
+                    plans.value = computed
+                    mergeEntries(computed)
+                    loading.value = false
+                }
+        }
+    }
+
+    /** Keeps anything already typed, and seeds entries for newly added exercises only. */
+    private fun mergeEntries(computed: List<ExercisePlanUi>) {
+        val u = units.value
+        entries.update { existing ->
+            val merged = existing.toMutableMap()
+            computed.forEach { plan ->
+                plan.prescription.targets.forEach { t ->
+                    val key = "${plan.exercise.id}:${t.setIndex}"
+                    if (key !in merged) {
+                        merged[key] = SetEntry(
                             weight = if (t.weightKg > 0) Load.format(Load.toDisplay(t.weightKg, u)) else "",
                             reps = t.reps.toString(),
                             rir = t.targetRir,
-                            exactKg = t.weightKg.takeIf { it > 0 },
+                            exactKg = t.weightKg.takeIf { w -> w > 0 },
                         )
                     }
-                }.toMap()
+                }
             }
-            loading.value = false
+            merged
         }
+    }
+
+    fun addExercise(exerciseId: String) {
+        val session = sessionFlow.value ?: return
+        viewModelScope.launch { workouts.addExerciseToSession(session.id, exerciseId) }
+    }
+
+    fun removeExercise(item: SessionExerciseEntity) {
+        viewModelScope.launch { workouts.removeSessionExercise(item) }
+    }
+
+    fun swapExercise(item: SessionExerciseEntity, newExerciseId: String) {
+        viewModelScope.launch { workouts.swapSessionExercise(item, newExerciseId) }
+    }
+
+    fun changeSets(item: SessionExerciseEntity, delta: Int) {
+        viewModelScope.launch { workouts.changeTargetSets(item, delta) }
     }
 
     fun updateWeight(exerciseId: String, setIndex: Int, value: String) = edit(exerciseId, setIndex) {
@@ -184,7 +231,7 @@ class SessionViewModel(
             val isPr = workouts.logSet(
                 sessionId = session.id,
                 exercise = plan.exercise,
-                plannedExerciseId = plan.planned.id,
+                plannedExerciseId = null,
                 setIndex = setIndex,
                 weightKg = weight,
                 reps = reps,
@@ -235,7 +282,7 @@ class SessionViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val c = container
-                SessionViewModel(c.workouts, c.program, c.gyms, c.restTimer)
+                SessionViewModel(c.workouts, c.program, c.gyms, c.exercises, c.restTimer)
             }
         }
     }

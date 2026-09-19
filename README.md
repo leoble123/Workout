@@ -8,6 +8,14 @@ Every session you re-derive what you lifted last time, what to add, how many set
 supposed to be doing this week, and when to deload — and it costs you battery and a warm
 phone to do it.
 
+## Getting going
+
+Open it and hit **Start workout**. Add exercises as you go and Forge fills in the weights
+from the last time you did each one. Setting up an automated block is optional and can wait.
+
+Four places: **Today** (train), **Progress** (records, history, charts), **Plan** (your block
+and your gym), **Settings**.
+
 ## What it actually automates
 
 **Loads and reps, every set.** The last session's performance and RIR drive a double
@@ -31,13 +39,32 @@ adding one.
 **Rest and flow.** The timer starts itself when a set is logged, the list follows you to the
 next set, and the phone can stay in your pocket.
 
+Nothing here is a cage. Any session - planned or empty - owns its own exercise list, so you
+can add, swap or drop movements mid-workout without touching the block.
+
+## Finding things
+
+**Records** is a searchable list of every exercise you have trained, with its best estimated
+1RM, heaviest set, and when you last did it. Tap through for the full picture: all-time bests,
+an e1RM trend, and every set you have ever logged on it, grouped by day. Working out what you
+lifted last time should never mean scrolling a feed of workouts.
+
+**Picking an exercise** works the way it should: type a few letters, or tap a body part.
+Equipment your gym does not have is sorted to the bottom and labelled, rather than hidden -
+silently omitting something looks identical to the app not having it.
+
 ## Your gym, and the unit it is marked in
 
 Programs are generated from what is actually on the floor, not from a generic commercial gym.
 
-A gym profile carries its equipment (fifteen categories — a pin stack is not a plate-loaded
+A gym profile carries its equipment (seventeen categories — a pin stack is not a plate-loaded
 machine, a pull-up bar is not a lat pulldown), free-text detail on any of them, and a list of
 **stations**: named machines with your own notes and an explicit list of what each one can do.
+
+Some movements need more than one thing. A loose barbell does not give you a back squat —
+you also need something to unrack it from — so exercises carry secondary requirements, and a
+gym with barbells but no rack gets rows, RDLs and curls rather than squats and bench presses
+it cannot perform.
 A station grants its exercises even when its equipment category is switched off, which is how
 a sparse gym says "no machines, except the shoulder press and pec deck on that one combo unit"
 without lying in either direction. Availability resolves most-specific-first: a per-exercise
@@ -47,6 +74,9 @@ Station names are yours to write. The app has no way to verify a manufacturer's 
 and does not invent one — what it actually needs is the exercise list.
 
 If the gym cannot train a muscle at all, the generator says so instead of quietly dropping it.
+
+Gyms can also override the barbell step: if the smallest plate on the rack is 2.5 lb, the
+smallest honest jump is a pair of them, whatever the default says.
 
 **Units belong to the gym, not to you.** An Australian gym's plates are marked in kg and step
 in 2.5; a US gym's step in 5 lb. That is not a display preference — rounding a suggestion in
@@ -119,6 +149,8 @@ data/
   importer/      RFC 4180 CSV reader, Hevy importer, name classifier
   repo/          repositories; WorkoutRepository.prescribe() is where a day becomes targets
 ui/              theme and motion system, shared components, one package per screen
+  components/    ExercisePicker, charts, rest-timer UI, steppers
+  progress/      records, per-exercise detail
 timer/           the rest timer, its alarm receiver and notification
 ```
 
@@ -129,8 +161,6 @@ single-user app it is less machinery, and it keeps the build to one annotation p
 
 - **Wear OS companion.** The real zero-tap story: log a set from your wrist. The data model
   is ready for it; the module is not written.
-- **Editing a generated program** from the UI (swap or add an exercise). The repository
-  methods exist, the screen does not.
 - **Health Connect** export of sessions.
 - **Plate calculator**, supersets, myo-reps and drop sets. `SetType` already carries them;
   nothing logs them yet.
@@ -140,13 +170,16 @@ single-user app it is less machinery, and it keeps the build to one annotation p
 - **Light theme.**
 - **Per-exercise gym notes.** The schema carries notes against an exercise at a gym ("this
   leg press starts at 60"), and the session screen does not surface them yet.
+- **Reordering** exercises within a session or a planned day.
+- **Bar weight and a plate calculator.** Loads are logged as the total lifted; with a light
+  bar and an odd plate selection, being told which plates to hang on it would help.
 - **Baseline profile.** `profileinstaller` ships, but no profile is generated yet.
 
 ## Tests
 
-71 unit tests over the progression engine, the unit/loading model, volume ramp and
-autoregulator, the generator, gym availability, the CSV parser and the Hevy importer's date
-handling. `./gradlew test`.
+77 unit tests over the progression engine, the unit/loading model, volume ramp and
+autoregulator, the generator, gym availability and equipment requirements, the CSV parser and
+the Hevy importer's date handling. `./gradlew test`.
 
 Several exist because they caught real bugs: a classifier rule order that filed every imported
 leg curl as a biceps exercise (and, later, pike push-ups as chest and reverse Nordics as
@@ -156,6 +189,7 @@ Database migrations are checked separately, without a device:
 
 ```bash
 python3 tools/verify_migration.py 1 2
+python3 tools/verify_migration.py 2 3
 ```
 
 It rebuilds the old schema in real SQLite, applies the migration exactly as the Kotlin does,
