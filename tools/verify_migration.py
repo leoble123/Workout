@@ -23,6 +23,12 @@ SEED = {
         _EX + "('leg_press','Leg Press','QUADS','','MACHINE','SQUAT',0,8,20,5.0,0,0,0)",
         _EX + "('pec_deck','Pec Deck','CHEST','','MACHINE','ISOLATION',0,10,15,5.0,0,0,0)",
     ],
+    3: [
+        "INSERT INTO sessions (weekIndex,label,startedAt,status,totalVolumeKg,totalSets) "
+        "VALUES (0,'W',0,'IN_PROGRESS',0,0)",
+        "INSERT INTO session_exercises (sessionId,exerciseId,orderIndex,targetSets,repLow,repHigh,restSeconds) "
+        "VALUES (1,'back_squat',0,3,5,10,180)",
+    ],
     2: [
         _EX + "('back_squat','Back Squat','QUADS','','BARBELL','SQUAT',0,5,10,2.5,0,0,0)",
         _EX + "('barbell_bench_press','Barbell Bench Press','CHEST','','BARBELL','HORIZONTAL_PUSH',0,5,10,2.5,0,0,0)",
@@ -34,6 +40,7 @@ SEED = {
 REWRITES = {
     (1, 2): [("SELECT id, equipment FROM exercises", "equipment",
               {"leg_press": "MACHINE_PLATE_LOADED", "pec_deck": "MACHINE_SELECTORIZED"})],
+    (3, 4): [("SELECT exerciseId, notes FROM session_exercises", "notes", {"back_squat": None})],
     (2, 3): [("SELECT id, requiresAlso FROM exercises", "requiresAlso",
               # a squat needs something to unrack from; a bench press needs both
               {"back_squat": "RACK", "barbell_bench_press": "RACK,BENCH", "cable_curl": ""})],

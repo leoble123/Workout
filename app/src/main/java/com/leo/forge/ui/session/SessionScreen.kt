@@ -12,50 +12,60 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.EmojiEvents
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material3.ripple
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.leo.forge.data.prefs.ForgeSettings
+import com.leo.forge.data.db.entity.ExerciseEntity
 import com.leo.forge.data.db.entity.SessionExerciseEntity
+import com.leo.forge.data.prefs.ForgeSettings
+import com.leo.forge.data.repo.Deviation
 import com.leo.forge.data.repo.ExercisePlanUi
+import com.leo.forge.data.seed.ExerciseGuide
 import com.leo.forge.domain.model.*
-import com.leo.forge.domain.progression.SetTarget
 import com.leo.forge.timer.RestState
 import com.leo.forge.ui.components.*
-import com.leo.forge.ui.components.FOOTER_HEIGHT
 import com.leo.forge.ui.theme.Forge
 import com.leo.forge.ui.theme.LocalHapticsEnabled
-import com.leo.forge.ui.theme.Motion
 import com.leo.forge.ui.theme.NumericStyle
-import com.leo.forge.ui.theme.loadWithUnit
-import com.leo.forge.ui.theme.unitLabel
+import com.leo.forge.ui.theme.loadText
 import com.leo.forge.ui.theme.pressScale
+import com.leo.forge.ui.theme.tonnageText
+import com.leo.forge.ui.theme.unitLabel
 
+/**
+ * Logging a workout.
+ *
+ * Every set in the session is on screen as a row you can fill in and tick, in any order.
+ * There is deliberately no notion of a "current set": a focus that the app moves for you is
+ * a second source of truth about where you are, and it will sooner or later disagree with
+ * where you actually are.
+ */
 @Composable
 fun SessionScreen(
     settings: ForgeSettings,
@@ -63,91 +73,65 @@ fun SessionScreen(
     vm: SessionViewModel = viewModel(factory = SessionViewModel.Factory),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val picker by vm.picker.collectAsStateWithLifecycle()
+    val deviations by vm.deviations.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+
     var showFinish by remember { mutableStateOf(false) }
     var showAbandon by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
-    var helpFor by remember { mutableStateOf<com.leo.forge.data.db.entity.ExerciseEntity?>(null) }
     var swapTarget by remember { mutableStateOf<SessionExerciseEntity?>(null) }
-    val picker by vm.picker.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
+    var helpFor by remember { mutableStateOf<ExerciseEntity?>(null) }
+
+    LaunchedEffect(settings.showRir) { vm.setShowRir(settings.showRir) }
 
     // Nothing logged means nothing to confirm; a dialog there is just a speed bump.
     BackHandler { if (state.doneSets == 0) onDone() else showAbandon = true }
 
-    // Honour the keep-awake setting only while a workout is actually open, and always
-    // release it on the way out.
     val view = LocalView.current
     DisposableEffect(settings.keepScreenOn) {
         view.keepScreenOn = settings.keepScreenOn
         onDispose { view.keepScreenOn = false }
     }
 
-    // Keep the settings-driven RIR preference in sync with the view model.
-    LaunchedEffect(settings.showRir) { vm.setShowRir(settings.showRir) }
-
-    // A running countdown always names the set it is counting down to, even after a jump.
-    val resting = state.rest is RestState.Running
-    LaunchedEffect(state.upNextLabel, resting) {
-        if (resting) vm.syncRestLabel(state.upNextLabel)
-    }
-
-    // Keep the current set in view without the user chasing it.
-    val focus = state.focus
-    LaunchedEffect(focus, settings.autoAdvance) {
-        if (!settings.autoAdvance || focus == null) return@LaunchedEffect
-        val target = (focus.first + 1).coerceAtMost(state.plans.size)
-        // Scrolling something already on screen is the twitch that makes a list feel unsteady.
-        val alreadyVisible = listState.layoutInfo.visibleItemsInfo.any { it.index == target }
-        if (!alreadyVisible) listState.animateScrollToItem(target)
-    }
-
     Column(Modifier.fillMaxSize().background(Forge.colors.background)) {
+        SessionTopBar(
+            state = state,
+            onFinish = { vm.prepareFinish(); showFinish = true },
+            onLeave = { if (state.doneSets == 0) onDone() else showAbandon = true },
+            onManualRest = { vm.startRest(DEFAULT_MANUAL_REST) },
+        )
+        StatsStrip(state)
+
         LazyColumn(
             Modifier.weight(1f),
             state = listState,
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 22.dp, bottom = 16.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                SessionHeader(
-                    state = state,
-                    onFinish = { showFinish = true },
-                    onAbandon = { showAbandon = true },
-                )
-            }
-
-            itemsIndexed(state.plans, key = { _, p -> p.id }) { index, plan ->
-                ExerciseBlock(
+            itemsIndexed(state.plans, key = { _, p -> p.id }) { _, plan ->
+                ExerciseCard(
                     plan = plan,
                     state = state,
-                    isCurrentExercise = focus?.first == index,
-                    onStepWeight = { si, dir -> vm.stepWeight(plan.exercise.id, si, dir) },
-                    onStepReps = { si, dir -> vm.stepReps(plan.exercise.id, si, dir) },
+                    onToggleSet = { si -> vm.toggleSet(plan, si, settings.autoStartRest, settings.showRir) },
                     onWeight = { si, v -> vm.updateWeight(plan.exercise.id, si, v) },
                     onReps = { si, v -> vm.updateReps(plan.exercise.id, si, v) },
                     onRir = { si, r -> vm.setRir(plan.exercise.id, si, r) },
-                    onLog = { si ->
-                        val next = nextLabelAfter(state, plan, si)
-                        vm.logSet(plan, si, settings.autoStartRest, next, settings.showRir)
-                    },
-                    onUndo = { vm.undo(it) },
-                    onFocusSet = { si -> vm.focusSet(plan.exercise.id, si) },
-                    onHelp = { helpFor = plan.exercise },
+                    onToggleWarmup = { si -> vm.toggleWarmup(plan.exercise.id, si) },
                     onAddSet = { plan.sessionExercise?.let { vm.changeSets(it, 1) } },
                     onRemoveSet = { plan.sessionExercise?.let { vm.changeSets(it, -1) } },
                     onSwap = { swapTarget = plan.sessionExercise },
                     onRemove = { plan.sessionExercise?.let { vm.removeExercise(it) } },
+                    onNotes = { text -> plan.sessionExercise?.let { vm.setExerciseNotes(it, text) } },
+                    onRest = { seconds -> plan.sessionExercise?.let { vm.setExerciseRest(it, seconds) } },
+                    onHelp = { helpFor = plan.exercise },
                 )
             }
 
             item {
-                Spacer(Modifier.height(4.dp))
-                SecondaryButton(
-                    "Add exercise",
-                    Modifier.fillMaxWidth(),
-                    icon = Icons.Rounded.Add,
-                ) { showPicker = true }
+                SecondaryButton("Add exercise", Modifier.fillMaxWidth(), icon = Icons.Rounded.Add) {
+                    showPicker = true
+                }
             }
 
             if (!state.loading && state.plans.isEmpty()) {
@@ -160,10 +144,10 @@ fun SessionScreen(
             }
         }
 
-        // One footer that always states exactly one true thing: resting, next up, or done.
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        AnimatedVisibility(
+            visible = state.prBanner != null,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
         ) {
             LaunchedEffect(state.prBanner) {
                 if (state.prBanner != null) {
@@ -171,25 +155,14 @@ fun SessionScreen(
                     vm.clearPr()
                 }
             }
-            AnimatedVisibility(
-                visible = state.prBanner != null,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
+            Box(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                 PrBanner(state.prBanner.orEmpty()) { vm.clearPr() }
             }
+        }
 
-            val rest = state.rest
-            if (rest is RestState.Running) {
-                RestBar(running = rest, onNudge = vm::nudgeRest, onSkip = vm::skipRest)
-            } else {
-                UpNextBar(
-                    state = state,
-                    onFinish = { showFinish = true },
-                    onGoToCurrent = {
-                        focus?.let { scope.launch { listState.animateScrollToItem(it.first + 1) } }
-                    },
-                )
+        (state.rest as? RestState.Running)?.let { running ->
+            Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                RestBar(running = running, onNudge = vm::nudgeRest, onSkip = vm::skipRest)
             }
         }
     }
@@ -229,10 +202,11 @@ fun SessionScreen(
     if (showFinish) {
         FinishSheet(
             muscles = state.musclesTrained,
+            deviations = deviations,
             onDismiss = { showFinish = false },
-            onConfirm = { feedback ->
+            onConfirm = { feedback, keepChanges ->
                 showFinish = false
-                vm.finish(feedback, onDone)
+                vm.finish(feedback, keepChanges, onDone)
             },
         )
     }
@@ -244,8 +218,7 @@ fun SessionScreen(
             title = { Text("Leave this workout?", color = Forge.colors.textPrimary) },
             text = {
                 Text(
-                    if (state.doneSets == 0) "Nothing is logged yet, so the session will just be discarded."
-                    else "${state.doneSets} sets are logged. You can come back to it, or end it here.",
+                    "${state.doneSets} sets are logged. You can come back to it, or end it here.",
                     color = Forge.colors.textSecondary,
                 )
             },
@@ -263,131 +236,443 @@ fun SessionScreen(
     }
 }
 
-private fun nextLabelAfter(state: SessionUiState, plan: ExercisePlanUi, setIndex: Int): String {
-    val remainingHere = plan.prescription.targets.count { it.setIndex > setIndex }
-    if (remainingHere > 0) return "${plan.exercise.name} · set ${setIndex + 2}"
-    val idx = state.plans.indexOfFirst { it.id == plan.id }
-    return state.plans.getOrNull(idx + 1)?.exercise?.name ?: "Last set done"
-}
+private const val DEFAULT_MANUAL_REST = 120
+
+// ---------------------------------------------------------------- header
 
 @Composable
-private fun SessionHeader(state: SessionUiState, onFinish: () -> Unit, onAbandon: () -> Unit) {
-    val started = state.session?.startedAt ?: System.currentTimeMillis()
-    val elapsed by rememberElapsedSeconds(started)
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    state.meso?.let { "Week ${state.session?.weekIndex?.plus(1) ?: 1} of ${it.totalWeeks}" } ?: "Freestyle",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Forge.colors.textTertiary,
-                )
-                Text(
-                    state.session?.label ?: "Workout",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = Forge.colors.textPrimary,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(formatClock(elapsed), style = NumericStyle.copy(fontSize = 20.sp), color = Forge.colors.textPrimary)
-                Text(
-                    "${state.doneSets}/${state.totalSets} sets",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Forge.colors.textTertiary,
-                )
-            }
+private fun SessionTopBar(
+    state: SessionUiState,
+    onFinish: () -> Unit,
+    onLeave: () -> Unit,
+    onManualRest: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 6.dp, end = 14.dp, top = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onLeave) {
+            Icon(Icons.Rounded.ExpandMore, "Leave", tint = Forge.colors.textSecondary)
         }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PrimaryButton("Finish", Modifier.weight(1f), onClick = onFinish)
-            SecondaryButton("Leave", icon = Icons.Rounded.Close, onClick = onAbandon)
+        Text(
+            state.session?.label ?: "Workout",
+            style = MaterialTheme.typography.titleLarge,
+            color = Forge.colors.textPrimary,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onManualRest) {
+            Icon(Icons.Rounded.Timer, "Start a rest", tint = Forge.colors.textSecondary)
         }
+        Spacer(Modifier.width(4.dp))
+        PrimaryButton("Finish", onClick = onFinish)
     }
 }
 
-/**
- * The footer when nothing is resting: what you are on, or that you are finished.
- *
- * It exists so there is exactly one place to look for "what now". Between the rest countdown
- * and this, that question always has a visible answer, and neither can contradict the list
- * because both read the same focus.
- */
+/** Duration, volume and set count - the three numbers worth glancing at mid-session. */
 @Composable
-private fun UpNextBar(state: SessionUiState, onFinish: () -> Unit, onGoToCurrent: () -> Unit) {
-    val focus = state.focus
-    val complete = state.isComplete
-    val shape = RoundedCornerShape(24.dp)
+private fun StatsStrip(state: SessionUiState) {
+    val elapsed by rememberElapsedSeconds(state.session?.startedAt ?: System.currentTimeMillis())
+    val (volume, volumeUnit) = tonnageText(state.volumeKg)
 
     Row(
         Modifier
             .fillMaxWidth()
-            .height(FOOTER_HEIGHT)
-            .clip(shape)
-            .background(Forge.colors.surface2)
-            .border(1.dp, if (complete) Forge.colors.accent else Forge.colors.outline, shape)
-            .then(if (focus != null) Modifier.clickable { onGoToCurrent() } else Modifier)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 18.dp, vertical = 10.dp),
     ) {
-        Box(
-            Modifier
-                .size(46.dp)
-                .clip(RoundedCornerShape(13.dp))
-                .background(if (complete) Forge.colors.accent else Forge.colors.surface3),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (complete) {
-                Icon(Icons.Rounded.Check, null, tint = Forge.colors.onAccent, modifier = Modifier.size(20.dp))
-            } else {
-                Text(
-                    "${(focus?.second ?: 0) + 1}",
-                    style = NumericStyle.copy(fontSize = 15.sp),
-                    color = Forge.colors.textSecondary,
-                )
-            }
-        }
-        Spacer(Modifier.width(14.dp))
+        StatCell("Duration", formatClock(elapsed), Modifier.weight(1f))
+        StatCell("Volume", "$volume $volumeUnit", Modifier.weight(1f))
+        StatCell("Sets", "${state.doneSets}", Modifier.weight(1f))
+    }
+    HorizontalDivider(color = Forge.colors.outline)
+}
 
-        Column(Modifier.weight(1f)) {
-            Text(
-                when {
-                    complete -> "Session done"
-                    state.plans.isEmpty() -> "Nothing added yet"
-                    else -> "UP NEXT"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = Forge.colors.textTertiary,
-            )
-            Text(
-                when {
-                    complete -> "${state.doneSets} sets logged"
-                    state.plans.isEmpty() -> "Add an exercise to begin"
-                    else -> state.upNextLabel
-                },
-                style = MaterialTheme.typography.titleMedium,
-                color = Forge.colors.textPrimary,
-                maxLines = 1,
-            )
-        }
+@Composable
+private fun StatCell(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Forge.colors.textTertiary)
+        Spacer(Modifier.height(2.dp))
+        Text(value, style = NumericStyle.copy(fontSize = 17.sp), color = Forge.colors.accent)
+    }
+}
 
-        if (complete) {
-            Spacer(Modifier.width(10.dp))
-            PrimaryButton("Finish", onClick = onFinish)
-        } else {
-            focus?.let { slot ->
-                state.targetAt(slot)?.let { target ->
-                    Spacer(Modifier.width(10.dp))
+// ---------------------------------------------------------------- exercise
+
+@Composable
+private fun ExerciseCard(
+    plan: ExercisePlanUi,
+    state: SessionUiState,
+    onToggleSet: (Int) -> Unit,
+    onWeight: (Int, String) -> Unit,
+    onReps: (Int, String) -> Unit,
+    onRir: (Int, Int) -> Unit,
+    onToggleWarmup: (Int) -> Unit,
+    onAddSet: () -> Unit,
+    onRemoveSet: () -> Unit,
+    onSwap: () -> Unit,
+    onRemove: () -> Unit,
+    onNotes: (String) -> Unit,
+    onRest: (Int) -> Unit,
+    onHelp: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    var restMenu by remember { mutableStateOf(false) }
+    var notes by remember(plan.id) { mutableStateOf(plan.sessionExercise?.notes.orEmpty()) }
+    val cue = remember(plan.exercise.id) { ExerciseGuide.forExercise(plan.exercise.id) }
+    val restSeconds = plan.sessionExercise?.restSeconds ?: plan.prescription.restSeconds
+
+    ForgeCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Forge.colors.surface3),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
-                        if (target.weightKg > 0) "${loadWithUnit(target.weightKg)} × ${target.reps}"
-                        else "× ${target.reps}",
-                        style = NumericStyle.copy(fontSize = 14.sp),
+                        plan.exercise.primaryMuscle.display.take(1),
+                        style = MaterialTheme.typography.labelLarge,
                         color = Forge.colors.accent,
                     )
                 }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    plan.exercise.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Forge.colors.accent,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f).clickable { onHelp() },
+                )
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Rounded.MoreVert, "More", tint = Forge.colors.textTertiary, modifier = Modifier.size(20.dp))
+                    }
+                    DropdownMenu(menu, { menu = false }, containerColor = Forge.colors.surface3) {
+                        DropdownMenuItem(
+                            text = { Text("How to do it", color = Forge.colors.textPrimary) },
+                            onClick = { menu = false; onHelp() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Swap exercise", color = Forge.colors.textPrimary) },
+                            onClick = { menu = false; onSwap() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Remove a set", color = Forge.colors.textPrimary) },
+                            onClick = { menu = false; onRemoveSet() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Remove exercise", color = Forge.colors.danger) },
+                            onClick = { menu = false; onRemove() },
+                        )
+                    }
+                }
+            }
+
+            if (cue != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    cue.execution,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Forge.colors.textSecondary,
+                    maxLines = 2,
+                    modifier = Modifier.clickable { onHelp() },
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            BasicTextField(
+                value = notes,
+                onValueChange = { notes = it; onNotes(it) },
+                textStyle = MaterialTheme.typography.bodySmall.copy(color = Forge.colors.textPrimary),
+                cursorBrush = SolidColor(Forge.colors.accent),
+                decorationBox = { inner ->
+                    if (notes.isEmpty()) {
+                        Text(
+                            "Add notes here…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Forge.colors.textTertiary,
+                        )
+                    }
+                    inner()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(10.dp))
+            Box {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { restMenu = true }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Timer, null, tint = Forge.colors.accent, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (restSeconds <= 0) "Rest timer: off" else "Rest timer: ${formatClock(restSeconds)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Forge.colors.accent,
+                    )
+                }
+                DropdownMenu(restMenu, { restMenu = false }, containerColor = Forge.colors.surface3) {
+                    listOf(0, 60, 90, 120, 150, 180, 210, 240, 300).forEach { seconds ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (seconds == 0) "Off" else formatClock(seconds),
+                                    color = if (seconds == restSeconds) Forge.colors.accent else Forge.colors.textPrimary,
+                                )
+                            },
+                            onClick = { restMenu = false; onRest(seconds) },
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            SetTableHeader(showRir = state.showRir)
+
+            plan.prescription.targets.forEach { target ->
+                val key = state.key(plan.exercise.id, target.setIndex)
+                val entry = state.entries[key]
+                SetRow(
+                    setIndex = target.setIndex,
+                    entry = entry,
+                    logged = state.loggedSet(plan.exercise.id, target.setIndex),
+                    previous = state.previousSet(plan, target.setIndex),
+                    showRir = state.showRir,
+                    onWeight = { onWeight(target.setIndex, it) },
+                    onReps = { onReps(target.setIndex, it) },
+                    onRir = { onRir(target.setIndex, it) },
+                    onToggleWarmup = { onToggleWarmup(target.setIndex) },
+                    onToggle = { onToggleSet(target.setIndex) },
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Forge.colors.surface3)
+                    .clickable { onAddSet() }
+                    .padding(vertical = 11.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Add, null, tint = Forge.colors.textSecondary, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Add set", style = MaterialTheme.typography.labelMedium, color = Forge.colors.textSecondary)
             }
         }
     }
 }
+
+// ---------------------------------------------------------------- set table
+
+private val SET_COL = 34.dp
+private val NUM_COL = 62.dp
+private val RIR_COL = 46.dp
+private val TICK_COL = 42.dp
+
+@Composable
+private fun SetTableHeader(showRir: Boolean) {
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HeaderCell("SET", Modifier.width(SET_COL))
+        HeaderCell("PREVIOUS", Modifier.weight(1f))
+        HeaderCell(unitLabel().uppercase(), Modifier.width(NUM_COL), TextAlign.Center)
+        HeaderCell("REPS", Modifier.width(NUM_COL), TextAlign.Center)
+        if (showRir) HeaderCell("RIR", Modifier.width(RIR_COL), TextAlign.Center)
+        Spacer(Modifier.width(TICK_COL))
+    }
+}
+
+@Composable
+private fun HeaderCell(text: String, modifier: Modifier = Modifier, align: TextAlign = TextAlign.Start) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = Forge.colors.textTertiary,
+        textAlign = align,
+        modifier = modifier,
+    )
+}
+
+/**
+ * One set.
+ *
+ * Fields arrive pre-filled with what the engine expects of you, so the common case is a
+ * single tap on the tick. PREVIOUS carries what you did last time, which is what stops the
+ * pre-filled number being something you have to take on faith.
+ */
+@Composable
+private fun SetRow(
+    setIndex: Int,
+    entry: SetEntry?,
+    logged: com.leo.forge.data.db.entity.SetLogEntity?,
+    previous: com.leo.forge.data.db.entity.SetLogEntity?,
+    showRir: Boolean,
+    onWeight: (String) -> Unit,
+    onReps: (String) -> Unit,
+    onRir: (Int) -> Unit,
+    onToggleWarmup: () -> Unit,
+    onToggle: () -> Unit,
+) {
+    val done = logged != null
+    val warmup = (logged?.type ?: entry?.type) == SetType.WARMUP
+    val haptic = LocalHapticFeedback.current
+    val hapticsOn = LocalHapticsEnabled.current
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (done) Forge.colors.accent.copy(alpha = 0.10f) else Color.Transparent)
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .width(SET_COL)
+                .height(32.dp)
+                .padding(end = 4.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Forge.colors.surface3)
+                .clickable { onToggleWarmup() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (warmup) "W" else "${setIndex + 1}",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (warmup) Forge.colors.warn else Forge.colors.textSecondary,
+            )
+        }
+
+        Text(
+            previous?.let { "${loadText(it.weightKg)} × ${it.reps}" } ?: "—",
+            style = MaterialTheme.typography.bodySmall,
+            color = Forge.colors.textTertiary,
+            maxLines = 1,
+            modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+        )
+
+        CellField(
+            value = entry?.weight.orEmpty(),
+            onValueChange = onWeight,
+            modifier = Modifier.width(NUM_COL),
+            decimal = true,
+            done = done,
+        )
+        Spacer(Modifier.width(6.dp))
+        CellField(
+            value = entry?.reps.orEmpty(),
+            onValueChange = onReps,
+            modifier = Modifier.width(NUM_COL),
+            done = done,
+        )
+
+        if (showRir) {
+            Spacer(Modifier.width(6.dp))
+            var rirMenu by remember { mutableStateOf(false) }
+            Box(Modifier.width(RIR_COL)) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .border(1.dp, Forge.colors.outline, RoundedCornerShape(9.dp))
+                        .clickable { rirMenu = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "${entry?.rir ?: 2}",
+                        style = NumericStyle.copy(fontSize = 14.sp),
+                        color = Forge.colors.textPrimary,
+                    )
+                }
+                DropdownMenu(rirMenu, { rirMenu = false }, containerColor = Forge.colors.surface3) {
+                    (0..4).forEach { r ->
+                        DropdownMenuItem(
+                            text = { Text(if (r == 4) "4+" else "$r", color = Forge.colors.textPrimary) },
+                            onClick = { rirMenu = false; onRir(r) },
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.width(6.dp))
+        val interaction = remember { MutableInteractionSource() }
+        Box(
+            Modifier
+                .pressScale(interaction, pressedScale = 0.88f)
+                .size(TICK_COL - 4.dp, 34.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(if (done) Forge.colors.accent else Forge.colors.surface3)
+                .clickable(interactionSource = interaction, indication = null) {
+                    if (hapticsOn) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onToggle()
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Check,
+                if (done) "Undo set" else "Complete set",
+                tint = if (done) Forge.colors.onAccent else Forge.colors.textTertiary,
+                modifier = Modifier.size(19.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CellField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    decimal: Boolean = false,
+    done: Boolean = false,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        textStyle = NumericStyle.copy(
+            fontSize = 15.sp,
+            color = Forge.colors.textPrimary,
+            textAlign = TextAlign.Center,
+        ),
+        singleLine = true,
+        cursorBrush = SolidColor(Forge.colors.accent),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number,
+            imeAction = ImeAction.Done,
+        ),
+        decorationBox = { inner ->
+            Box(
+                modifier
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (done) Color.Transparent else Forge.colors.surface2)
+                    .border(
+                        1.dp,
+                        if (done) Color.Transparent else Forge.colors.outline,
+                        RoundedCornerShape(9.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) { inner() }
+        },
+    )
+}
+
+// ---------------------------------------------------------------- finishing
 
 @Composable
 private fun PrBanner(text: String, onDismiss: () -> Unit) {
@@ -411,352 +696,48 @@ private fun PrBanner(text: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun ExerciseBlock(
-    plan: ExercisePlanUi,
-    state: SessionUiState,
-    isCurrentExercise: Boolean,
-    onStepWeight: (Int, Int) -> Unit,
-    onStepReps: (Int, Int) -> Unit,
-    onWeight: (Int, String) -> Unit,
-    onReps: (Int, String) -> Unit,
-    onRir: (Int, Int) -> Unit,
-    onLog: (Int) -> Unit,
-    onUndo: (com.leo.forge.data.db.entity.SetLogEntity) -> Unit,
-    onFocusSet: (Int) -> Unit,
-    onHelp: () -> Unit,
-    onAddSet: () -> Unit,
-    onRemoveSet: () -> Unit,
-    onSwap: () -> Unit,
-    onRemove: () -> Unit,
-) {
-    var showWhy by remember { mutableStateOf(false) }
-    var showMenu by remember { mutableStateOf(false) }
-    val targets = plan.prescription.targets
-
-    // A finished exercise folds away. Everything you are not doing is noise.
-    val finished = targets.isNotEmpty() && targets.all { state.loggedSet(plan.exercise.id, it.setIndex) != null }
-    var expanded by remember(plan.id) { mutableStateOf(false) }
-    val showSets = !finished || expanded || isCurrentExercise
-
-    ForgeCard(
-        Modifier.fillMaxWidth(),
-        color = if (isCurrentExercise) Forge.colors.surface2 else Forge.colors.surface1,
-        onClick = if (finished && !isCurrentExercise) ({ expanded = !expanded }) else null,
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (finished) {
-                    Box(
-                        Modifier.size(26.dp).clip(RoundedCornerShape(9.dp)).background(Forge.colors.accent),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Rounded.Check, null, tint = Forge.colors.onAccent, modifier = Modifier.size(16.dp))
-                    }
-                    Spacer(Modifier.width(10.dp))
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        plan.exercise.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = if (finished && !isCurrentExercise) Forge.colors.textSecondary else Forge.colors.textPrimary,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    if (finished && !showSets) {
-                        val done = targets.mapNotNull { state.loggedSet(plan.exercise.id, it.setIndex) }
-                        val best = done.maxByOrNull { it.weightKg * it.reps }
-                        Text(
-                            "${done.size} sets" + (best?.let { " · top ${loadWithUnit(it.weightKg)} × ${it.reps}" } ?: ""),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Forge.colors.textTertiary,
-                        )
-                    } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Chip(plan.exercise.primaryMuscle.display)
-                            Chip("${plan.repLow}-${plan.repHigh} reps")
-                            if (state.showRir) Chip("RIR ${targets.firstOrNull()?.targetRir ?: 2}")
-                        }
-                    }
-                }
-                if (!finished || showSets) HelpButton(onClick = onHelp)
-                if (!finished || showSets) IconButton(onClick = { showWhy = !showWhy }) {
-                    Icon(
-                        Icons.Rounded.Info,
-                        "Why this weight",
-                        tint = if (showWhy) Forge.colors.accent else Forge.colors.textTertiary,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Box {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(
-                            Icons.Rounded.MoreVert, "More",
-                            tint = Forge.colors.textTertiary, modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false },
-                        containerColor = Forge.colors.surface3,
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Add a set", color = Forge.colors.textPrimary) },
-                            onClick = { showMenu = false; onAddSet() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Remove a set", color = Forge.colors.textPrimary) },
-                            onClick = { showMenu = false; onRemoveSet() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Swap exercise", color = Forge.colors.textPrimary) },
-                            onClick = { showMenu = false; onSwap() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Remove exercise", color = Forge.colors.danger) },
-                            onClick = { showMenu = false; onRemove() },
-                        )
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = showWhy, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
-                Column {
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        targets.firstOrNull()?.rationale.orEmpty(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Forge.colors.textSecondary,
-                    )
-                }
-            }
-
-            if (showSets) {
-            Spacer(Modifier.height(12.dp))
-
-            targets.forEach { target ->
-                val logged = state.loggedSet(plan.exercise.id, target.setIndex)
-                val isActive = state.focus == (state.plans.indexOfFirst { it.id == plan.id } to target.setIndex)
-                SetRow(
-                    target = target,
-                    entry = state.entries[state.key(plan.exercise.id, target.setIndex)],
-                    logged = logged,
-                    isActive = isActive,
-                    onStepWeight = { d -> onStepWeight(target.setIndex, d) },
-                    onStepReps = { d -> onStepReps(target.setIndex, d) },
-                    onWeight = { v -> onWeight(target.setIndex, v) },
-                    onReps = { v -> onReps(target.setIndex, v) },
-                    onRir = { r -> onRir(target.setIndex, r) },
-                    onLog = { onLog(target.setIndex) },
-                    onUndo = { logged?.let(onUndo) },
-                    onFocus = { onFocusSet(target.setIndex) },
-                    showRir = state.showRir,
-                    showJumpHint = isCurrentExercise,
-                )
-            }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SetRow(
-    target: SetTarget,
-    entry: SetEntry?,
-    logged: com.leo.forge.data.db.entity.SetLogEntity?,
-    isActive: Boolean,
-    onStepWeight: (Int) -> Unit,
-    onStepReps: (Int) -> Unit,
-    onWeight: (String) -> Unit,
-    onReps: (String) -> Unit,
-    onRir: (Int) -> Unit,
-    onLog: () -> Unit,
-    onUndo: () -> Unit,
-    onFocus: () -> Unit,
-    showRir: Boolean,
-    showJumpHint: Boolean,
-) {
-    val haptic = LocalHapticFeedback.current
-    val hapticsOn = LocalHapticsEnabled.current
-
-    when {
-        logged != null -> Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .clickable { onUndo() }
-                .padding(vertical = 10.dp, horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(26.dp).clip(RoundedCornerShape(9.dp)).background(Forge.colors.accent),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Rounded.Check, null, tint = Forge.colors.onAccent, modifier = Modifier.size(16.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                "${loadWithUnit(logged.weightKg)} × ${logged.reps}" + (logged.rir?.let { "  @ $it RIR" } ?: ""),
-                style = NumericStyle.copy(fontSize = 16.sp),
-                color = Forge.colors.textPrimary,
-            )
-            Spacer(Modifier.weight(1f))
-            if (logged.isPr) Chip("PR", color = Forge.colors.pr, background = Forge.colors.surface3)
-            else Text("tap to undo", style = MaterialTheme.typography.labelSmall, color = Forge.colors.textTertiary)
-        }
-
-        isActive -> Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(Forge.colors.surface3)
-                .padding(14.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "SET ${target.setIndex + 1}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Forge.colors.accent,
-                )
-                Spacer(Modifier.weight(1f))
-                if (target.isEstimateOnly) {
-                    Text(
-                        "pick a starting load",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Forge.colors.textTertiary,
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ValueStepper(
-                    value = entry?.weight.orEmpty(),
-                    label = unitLabel(),
-                    onValueChange = onWeight,
-                    onStep = onStepWeight,
-                    decimal = true,
-                )
-                Spacer(Modifier.width(6.dp))
-                ValueStepper(
-                    value = entry?.reps.orEmpty(),
-                    label = "reps",
-                    onValueChange = onReps,
-                    onStep = onStepReps,
-                )
-                Spacer(Modifier.weight(1f))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "LOG SET",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Forge.colors.textTertiary,
-                )
-                Spacer(Modifier.height(4.dp))
-                LogButton {
-                    if (hapticsOn) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onLog()
-                }
-                }
-            }
-            if (showRir) {
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("RIR", style = MaterialTheme.typography.labelSmall, color = Forge.colors.textTertiary)
-                Spacer(Modifier.width(8.dp))
-                (0..4).forEach { r ->
-                    val selected = entry?.rir == r
-                    Box(
-                        Modifier
-                            .padding(end = 6.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(if (selected) Forge.colors.accent else Forge.colors.surface1)
-                            .clickable { onRir(r) }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    ) {
-                        Text(
-                            if (r == 4) "4+" else "$r",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (selected) Forge.colors.onAccent else Forge.colors.textSecondary,
-                        )
-                    }
-                }
-            }
-            }
-        }
-
-        // Upcoming: tap to jump straight to it, for sets done out of order.
-        else -> Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .clickable { onFocus() }
-                .padding(vertical = 10.dp, horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier
-                    .size(26.dp)
-                    .clip(RoundedCornerShape(9.dp))
-                    .border(1.dp, Forge.colors.outline, RoundedCornerShape(9.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "${target.setIndex + 1}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Forge.colors.textTertiary,
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                if (target.weightKg > 0) "${loadWithUnit(target.weightKg)} × ${target.reps}" else "— × ${target.reps}",
-                style = NumericStyle.copy(fontSize = 15.sp),
-                color = Forge.colors.textTertiary,
-                modifier = Modifier.weight(1f),
-            )
-            if (showJumpHint) {
-                Text(
-                    "tap to jump",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Forge.colors.textTertiary,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LogButton(onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        Modifier
-            .pressScale(interaction, pressedScale = 0.9f)
-            .size(62.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Forge.colors.accent)
-            .clickable(
-                interactionSource = interaction,
-                indication = ripple(color = Forge.colors.onAccent),
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(Icons.Rounded.Check, "Log set", tint = Forge.colors.onAccent, modifier = Modifier.size(30.dp))
-    }
-}
-
-@Composable
 private fun FinishSheet(
     muscles: List<Muscle>,
+    deviations: List<Deviation>,
     onDismiss: () -> Unit,
-    onConfirm: (Map<Muscle, Triple<Pump?, Soreness?, Workload?>>) -> Unit,
+    onConfirm: (Map<Muscle, Triple<Pump?, Soreness?, Workload?>>, Boolean) -> Unit,
 ) {
     val answers = remember { mutableStateMapOf<Muscle, Triple<Pump?, Soreness?, Workload?>>() }
+    var keepChanges by remember { mutableStateOf(false) }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Forge.colors.surface1,
-    ) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Forge.colors.surface1) {
         LazyColumn(
             Modifier.fillMaxWidth().heightIn(max = 620.dp),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
         ) {
+            if (deviations.isNotEmpty()) {
+                item {
+                    Text(
+                        "You changed the plan",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Forge.colors.textPrimary,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    deviations.forEach {
+                        Text(
+                            "· ${it.describe}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Forge.colors.textSecondary,
+                        )
+                        Spacer(Modifier.height(2.dp))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    KeepChoice(keepChanges) { keepChanges = it }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Weights are not part of this - those are learned from what you logged either way.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Forge.colors.textTertiary,
+                    )
+                    Spacer(Modifier.height(22.dp))
+                }
+            }
+
             item {
                 Text("How did that go?", style = MaterialTheme.typography.headlineMedium, color = Forge.colors.textPrimary)
                 Spacer(Modifier.height(6.dp))
@@ -790,10 +771,37 @@ private fun FinishSheet(
 
             item {
                 Spacer(Modifier.height(4.dp))
-                PrimaryButton("Finish workout", Modifier.fillMaxWidth()) { onConfirm(answers.toMap()) }
+                PrimaryButton("Finish workout", Modifier.fillMaxWidth()) { onConfirm(answers.toMap(), keepChanges) }
                 Spacer(Modifier.height(8.dp))
-                SecondaryButton("Skip feedback", Modifier.fillMaxWidth()) { onConfirm(emptyMap()) }
+                SecondaryButton("Skip feedback", Modifier.fillMaxWidth()) { onConfirm(emptyMap(), keepChanges) }
                 Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+/** Once, at the end: was that a one-off, or how the block should look from now on? */
+@Composable
+private fun KeepChoice(keep: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth()) {
+        listOf(false to "Just this session", true to "Update my program").forEach { (value, label) ->
+            val selected = keep == value
+            Box(
+                Modifier
+                    .weight(1f)
+                    .padding(end = if (value) 0.dp else 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (selected) Forge.colors.accent else Forge.colors.surface3)
+                    .clickable { onChange(value) }
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (selected) Forge.colors.onAccent else Forge.colors.textSecondary,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }
@@ -830,7 +838,7 @@ private fun ChoiceRow(label: String, options: List<String>, selectedIndex: Int, 
 /** Minimal wrap layout; avoids depending on an experimental FlowRow signature. */
 @Composable
 private fun FlowRowCompat(content: @Composable () -> Unit) {
-    Layout(content = content) { measurables, constraints ->
+    androidx.compose.ui.layout.Layout(content = content) { measurables, constraints ->
         val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
         var x = 0
         var y = 0

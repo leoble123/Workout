@@ -130,6 +130,8 @@ data class SessionExerciseEntity(
     val repLow: Int = 8,
     val repHigh: Int = 12,
     val restSeconds: Int = 150,
+    /** Your own note for this exercise in this session ("felt heavy", "seat notch 4"). */
+    val notes: String? = null,
 )
 
 @Entity(

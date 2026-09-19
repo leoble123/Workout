@@ -24,6 +24,55 @@ import kotlin.math.ceil
  *
  * [sessionExercise] is set for a live workout and null for the read-only preview on Today.
  */
+/**
+ * A way this session ended up differing from the day it was built from.
+ *
+ * Only exercise choice is tracked. Loads are not a deviation - the engine already learns
+ * those from what you logged - and set counts come from the volume plan, which re-derives
+ * every week and would simply overwrite anything written back here.
+ */
+@Immutable
+sealed interface Deviation {
+    val describe: String
+
+    data class Swapped(val from: String, val to: String, val plannedId: Long, val newExerciseId: String) : Deviation {
+        override val describe get() = "$from → $to"
+    }
+
+    data class Added(val name: String, val exerciseId: String) : Deviation {
+        override val describe get() = "Added $name"
+    }
+
+    data class Removed(val name: String, val plannedId: Long) : Deviation {
+        override val describe get() = "Removed $name"
+    }
+
+    companion object {
+        /**
+         * Diffs a planned day against what the session actually contained.
+         *
+         * One exercise out and one in is reported as a swap rather than an unrelated removal
+         * and addition, because that is what it was: you stood in front of a machine that was
+         * taken and used the next one along.
+         */
+        fun diff(
+            planned: List<Pair<Long, String>>,
+            current: List<String>,
+            name: (String) -> String,
+        ): List<Deviation> {
+            val plannedIds = planned.map { it.second }
+            val dropped = planned.filter { it.second !in current }
+            val added = current.filter { it !in plannedIds }
+            val swaps = dropped.zip(added).map { (old, newId) ->
+                Swapped(name(old.second), name(newId), old.first, newId)
+            }
+            return swaps +
+                dropped.drop(swaps.size).map { Removed(name(it.second), it.first) } +
+                added.drop(swaps.size).map { Added(name(it), it) }
+        }
+    }
+}
+
 @Immutable
 data class ExercisePlanUi(
     val id: Long,
@@ -32,6 +81,13 @@ data class ExercisePlanUi(
     val repHigh: Int,
     val prescription: ExercisePrescription,
     val sessionExercise: SessionExerciseEntity? = null,
+    /**
+     * Working sets from the last time you trained this, set by set.
+     *
+     * Shown on every row. Knowing what you did last time is the single thing that stops a
+     * logging screen being a memory test, and it is why you can usually just tick the row.
+     */
+    val previous: List<SetLogEntity> = emptyList(),
 )
 
 class ExerciseRepository(private val db: ForgeDatabase) {
@@ -233,6 +289,7 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
                 exercise = exercise,
                 repLow = planned.repLow,
                 repHigh = planned.repHigh,
+                previous = last,
                 prescription = ProgressionEngine.prescribe(
                     exercise = exercise,
                     lastSets = last,
@@ -341,7 +398,15 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
     }
 
     suspend fun changeTargetSets(item: SessionExerciseEntity, delta: Int) {
-        db.sessionExercises().update(item.copy(targetSets = (item.targetSets + delta).coerceIn(1, 10)))
+        db.sessionExercises().update(item.copy(targetSets = (item.targetSets + delta).coerceIn(1, 12)))
+    }
+
+    suspend fun setExerciseNotes(item: SessionExerciseEntity, notes: String?) {
+        db.sessionExercises().update(item.copy(notes = notes?.takeIf { it.isNotBlank() }))
+    }
+
+    suspend fun setExerciseRest(item: SessionExerciseEntity, seconds: Int) {
+        db.sessionExercises().update(item.copy(restSeconds = seconds.coerceIn(0, 600)))
     }
 
     /**
@@ -367,6 +432,7 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
                 repLow = item.repLow,
                 repHigh = item.repHigh,
                 sessionExercise = item,
+                previous = last,
                 prescription = ProgressionEngine.prescribe(
                     exercise = exercise,
                     lastSets = last,
@@ -443,7 +509,73 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
         )
     }
 
-    suspend fun finishSession(sessionId: Long, feedback: Map<Muscle, Triple<Pump?, Soreness?, Workload?>>) {
+    /**
+     * How this session's exercises differ from the planned day it started as.
+     *
+     * Empty for a freestyle session: there is no plan for it to have strayed from.
+     */
+    suspend fun deviations(sessionId: Long): List<Deviation> {
+        val session = db.sessions().byId(sessionId) ?: return emptyList()
+        val dayId = session.plannedDayId ?: return emptyList()
+        val day = db.mesocycles().day(dayId) ?: return emptyList()
+
+        val planned = day.exercises.sortedBy { it.orderIndex }.map { it.id to it.exerciseId }
+        val current = db.sessionExercises().forSession(sessionId).sortedBy { it.orderIndex }.map { it.exerciseId }
+        val names = db.exercises().byIds((planned.map { it.second } + current).distinct())
+            .associate { it.id to it.name }
+        return Deviation.diff(planned, current) { names[it] ?: it }
+    }
+
+    /** Writes this session's exercise choices back into the block. */
+    suspend fun applyDeviations(sessionId: Long) {
+        val session = db.sessions().byId(sessionId) ?: return
+        val dayId = session.plannedDayId ?: return
+        val day = db.mesocycles().day(dayId) ?: return
+        val byId = day.exercises.associateBy { it.id }
+        var order = day.exercises.size
+
+        deviations(sessionId).forEach { deviation ->
+            when (deviation) {
+                is Deviation.Swapped -> byId[deviation.plannedId]?.let { planned ->
+                    db.exercises().byId(deviation.newExerciseId)?.let { replacement ->
+                        db.mesocycles().updatePlanned(
+                            planned.copy(
+                                exerciseId = replacement.id,
+                                repLow = replacement.repLow,
+                                repHigh = replacement.repHigh,
+                                restSeconds = ProgressionEngine.restSecondsFor(replacement),
+                            )
+                        )
+                    }
+                }
+                is Deviation.Removed -> byId[deviation.plannedId]?.let { db.mesocycles().deletePlanned(it) }
+                is Deviation.Added -> db.exercises().byId(deviation.exerciseId)?.let { exercise ->
+                    db.mesocycles().insertPlanned(
+                        PlannedExerciseEntity(
+                            plannedDayId = dayId,
+                            exerciseId = exercise.id,
+                            orderIndex = order++,
+                            repLow = exercise.repLow,
+                            repHigh = exercise.repHigh,
+                            baseSets = 3,
+                            restSeconds = ProgressionEngine.restSecondsFor(exercise),
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun finishSession(
+        sessionId: Long,
+        feedback: Map<Muscle, Triple<Pump?, Soreness?, Workload?>>,
+        keepChanges: Boolean = false,
+    ) {
+        if (keepChanges) applyDeviations(sessionId)
+        finishSessionInternal(sessionId, feedback)
+    }
+
+    private suspend fun finishSessionInternal(sessionId: Long, feedback: Map<Muscle, Triple<Pump?, Soreness?, Workload?>>) {
         val session = db.sessions().byId(sessionId) ?: return
         feedback.forEach { (muscle, f) ->
             db.feedback().upsert(

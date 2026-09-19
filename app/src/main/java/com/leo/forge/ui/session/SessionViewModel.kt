@@ -19,6 +19,7 @@ import com.leo.forge.domain.model.Load
 import com.leo.forge.timer.RestState
 import com.leo.forge.timer.RestTimer
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -30,7 +31,13 @@ import kotlinx.coroutines.launch
  * than drifting by a hundredth of a kilo on every conversion.
  */
 @Immutable
-data class SetEntry(val weight: String, val reps: String, val rir: Int, val exactKg: Double? = null)
+data class SetEntry(
+    val weight: String,
+    val reps: String,
+    val rir: Int,
+    val exactKg: Double? = null,
+    val type: SetType = SetType.WORKING,
+)
 
 @Immutable
 data class SessionUiState(
@@ -41,10 +48,6 @@ data class SessionUiState(
     val entries: Map<String, SetEntry> = emptyMap(),
     val logged: List<SetLogEntity> = emptyList(),
     val rest: RestState = RestState.Idle,
-    /** A set you tapped, which wins over the automatic focus. */
-    val manualFocus: Pair<String, Int>? = null,
-    /** Where the last log landed, so the session carries on from there rather than rewinding. */
-    val lastLogged: Pair<String, Int>? = null,
     val showRir: Boolean = false,
     val prBanner: String? = null,
     val dismissed: Boolean = false,
@@ -54,56 +57,18 @@ data class SessionUiState(
     fun loggedSet(exerciseId: String, setIndex: Int): SetLogEntity? =
         logged.firstOrNull { it.exerciseId == exerciseId && it.setIndex == setIndex }
 
+    /** What you did on this set last time you trained the exercise. */
+    fun previousSet(plan: ExercisePlanUi, setIndex: Int): SetLogEntity? =
+        plan.previous.getOrNull(setIndex)
+
     val totalSets: Int get() = plans.sumOf { it.prescription.targets.size }
-    val doneSets: Int get() = logged.count { it.type == SetType.WORKING }
+    val doneSets: Int get() = logged.count { it.type != SetType.WARMUP }
+    val volumeKg: Double get() = logged.filter { it.type != SetType.WARMUP }.sumOf { it.weightKg * it.reps }
 
-    /** Every set in the session, in the order you would perform them. */
-    val slots: List<Pair<Int, Int>>
-        get() = plans.flatMapIndexed { ei, plan -> plan.prescription.targets.map { ei to it.setIndex } }
-
-    private fun isUnlogged(slot: Pair<Int, Int>): Boolean =
-        plans.getOrNull(slot.first)?.let { loggedSet(it.exercise.id, slot.second) == null } ?: false
-
-    /**
-     * The set the screen is showing controls for.
-     *
-     * Order matters: a set you tapped wins, then the first unlogged set *after* the one you
-     * just logged, and only then the first unlogged set anywhere. That middle rule is what
-     * stops the session rewinding to the top the moment you log a set you jumped ahead to.
-     */
-    val focus: Pair<Int, Int>?
-        get() {
-            manualFocus?.let { (exerciseId, setIndex) ->
-                val index = plans.indexOfFirst { it.exercise.id == exerciseId }
-                if (index >= 0 && loggedSet(exerciseId, setIndex) == null) return index to setIndex
-            }
-            lastLogged?.let { (exerciseId, setIndex) ->
-                val index = plans.indexOfFirst { it.exercise.id == exerciseId }
-                if (index >= 0) {
-                    val ordered = slots
-                    val from = ordered.indexOf(index to setIndex)
-                    if (from >= 0) {
-                        ordered.drop(from + 1).firstOrNull { isUnlogged(it) }?.let { return it }
-                    }
-                }
-            }
-            return nextFocus
+    val isComplete: Boolean
+        get() = plans.isNotEmpty() && plans.all { plan ->
+            plan.prescription.targets.all { loggedSet(plan.exercise.id, it.setIndex) != null }
         }
-
-    /** The first unlogged set, in order. */
-    val nextFocus: Pair<Int, Int>?
-        get() = slots.firstOrNull { isUnlogged(it) }
-
-    val isComplete: Boolean get() = plans.isNotEmpty() && focus == null
-
-    /** What the countdown is counting down to - derived, so a jump can never leave it stale. */
-    val upNextLabel: String
-        get() = focus?.let { (ei, si) ->
-            plans.getOrNull(ei)?.let { "${it.exercise.name} · set ${si + 1}" }
-        } ?: "Last set done"
-
-    fun targetAt(slot: Pair<Int, Int>) =
-        plans.getOrNull(slot.first)?.prescription?.targets?.firstOrNull { it.setIndex == slot.second }
 
     val musclesTrained: List<Muscle>
         get() = plans.map { it.exercise.primaryMuscle }.distinct()
@@ -136,8 +101,10 @@ class SessionViewModel(
     private val meso = MutableStateFlow<MesocycleEntity?>(null)
     private val loading = MutableStateFlow(true)
     private val prBanner = MutableStateFlow<String?>(null)
-    private val manualFocus = MutableStateFlow<Pair<String, Int>?>(null)
-    private val lastLogged = MutableStateFlow<Pair<String, Int>?>(null)
+
+    private val _deviations = MutableStateFlow<List<com.leo.forge.data.repo.Deviation>>(emptyList())
+    /** How this session strayed from its planned day; asked about once, when finishing. */
+    val deviations: StateFlow<List<com.leo.forge.data.repo.Deviation>> = _deviations.asStateFlow()
     private val showRir = MutableStateFlow(false)
     private val dismissed = MutableStateFlow(false)
 
@@ -158,8 +125,6 @@ class SessionViewModel(
         .combine(loading) { s, l -> s.copy(loading = l) }
         .combine(prBanner) { s, pr -> s.copy(prBanner = pr) }
         .combine(dismissed) { s, d -> s.copy(dismissed = d) }
-        .combine(manualFocus) { s, f -> s.copy(manualFocus = f) }
-        .combine(lastLogged) { s, l -> s.copy(lastLogged = l) }
         .combine(showRir) { s, r -> s.copy(showRir = r) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionUiState())
 
@@ -210,19 +175,6 @@ class SessionViewModel(
         }
     }
 
-    /** Jump to any set - useful when you do them out of order, or fix one you skipped. */
-    fun focusSet(exerciseId: String, setIndex: Int) {
-        manualFocus.value = exerciseId to setIndex
-    }
-
-    /**
-     * Keeps the running timer describing the set you are actually on.
-     *
-     * The alarm carries the label too, so it is re-armed rather than left announcing a set
-     * you moved away from.
-     */
-    fun syncRestLabel(label: String) = restTimer.relabel(label)
-
     fun setShowRir(value: Boolean) { showRir.value = value }
 
     fun addExercise(exerciseId: String) {
@@ -270,6 +222,19 @@ class SessionViewModel(
 
     fun setRir(exerciseId: String, setIndex: Int, rir: Int) = edit(exerciseId, setIndex) { it.copy(rir = rir) }
 
+    /** Tapping the set number flips it between a working set and a warm-up. */
+    fun toggleWarmup(exerciseId: String, setIndex: Int) = edit(exerciseId, setIndex) {
+        it.copy(type = if (it.type == SetType.WARMUP) SetType.WORKING else SetType.WARMUP)
+    }
+
+    fun setExerciseNotes(item: SessionExerciseEntity, notes: String) {
+        viewModelScope.launch { workouts.setExerciseNotes(item, notes) }
+    }
+
+    fun setExerciseRest(item: SessionExerciseEntity, seconds: Int) {
+        viewModelScope.launch { workouts.setExerciseRest(item, seconds) }
+    }
+
     private fun edit(exerciseId: String, setIndex: Int, block: (SetEntry) -> SetEntry) {
         val key = "$exerciseId:$setIndex"
         entries.update { map ->
@@ -278,8 +243,22 @@ class SessionViewModel(
         }
     }
 
-    /** Logs one set. Returns true when it set a personal best. */
-    fun logSet(plan: ExercisePlanUi, setIndex: Int, autoStartRest: Boolean, nextLabel: String, trackRir: Boolean) {
+    /**
+     * Ticks a set, or unticks one already logged.
+     *
+     * A single action per row, any row, any order - there is no "current set" to be in sync
+     * with, which is what makes the screen impossible to get into a confusing state.
+     */
+    fun toggleSet(plan: ExercisePlanUi, setIndex: Int, autoStartRest: Boolean, trackRir: Boolean) {
+        val existing = state.value.loggedSet(plan.exercise.id, setIndex)
+        if (existing != null) {
+            viewModelScope.launch { workouts.deleteSet(existing) }
+            return
+        }
+        logSet(plan, setIndex, autoStartRest, trackRir)
+    }
+
+    private fun logSet(plan: ExercisePlanUi, setIndex: Int, autoStartRest: Boolean, trackRir: Boolean) {
         val session = sessionFlow.value ?: return
         val key = "${plan.exercise.id}:$setIndex"
         val entry = entries.value[key] ?: return
@@ -299,15 +278,16 @@ class SessionViewModel(
                 weightKg = weight,
                 reps = reps,
                 // Not tracking effort means logging no opinion, rather than a made-up one.
-                rir = entry.rir.takeIf { trackRir },
+                rir = entry.rir.takeIf { trackRir && entry.type != SetType.WARMUP },
+                type = entry.type,
                 target = target,
                 restSecondsBefore = (restTimer.state.value as? RestState.Running)?.totalSeconds,
             )
             if (isPr) prBanner.value = "${plan.exercise.name} - best estimated 1RM yet"
-            lastLogged.value = plan.exercise.id to setIndex
-            manualFocus.value = null
-            if (autoStartRest) {
-                restTimer.start(plan.prescription.restSeconds, nextLabel)
+            // The label names the set you just finished. A fact about the past cannot go stale.
+            if (autoStartRest && entry.type != SetType.WARMUP) {
+                val rest = plan.sessionExercise?.restSeconds ?: plan.prescription.restSeconds
+                restTimer.start(rest, "${plan.exercise.name} · set ${setIndex + 1}")
             } else {
                 // Otherwise a finished bar from the previous set would linger.
                 restTimer.stop()
@@ -324,11 +304,24 @@ class SessionViewModel(
     fun nudgeRest(seconds: Int) = restTimer.nudge(seconds)
     fun skipRest() = restTimer.stop()
 
-    fun finish(feedback: Map<Muscle, Triple<Pump?, Soreness?, Workload?>>, onDone: () -> Unit) {
+    /** A rest you asked for yourself, from the header. */
+    fun startRest(seconds: Int) = restTimer.start(seconds, "Rest")
+
+    /** Works out what changed, so finishing can ask about it rather than guessing. */
+    fun prepareFinish() {
+        val session = sessionFlow.value ?: return
+        viewModelScope.launch { _deviations.value = workouts.deviations(session.id) }
+    }
+
+    fun finish(
+        feedback: Map<Muscle, Triple<Pump?, Soreness?, Workload?>>,
+        keepChanges: Boolean,
+        onDone: () -> Unit,
+    ) {
         val session = sessionFlow.value ?: return onDone()
         viewModelScope.launch {
             restTimer.stop()
-            workouts.finishSession(session.id, feedback)
+            workouts.finishSession(session.id, feedback, keepChanges)
             dismissed.value = true
             onDone()
         }

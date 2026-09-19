@@ -70,3 +70,16 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         db.execSQL("UPDATE exercises SET requiresAlso = 'RACK,BENCH' WHERE id IN ('barbell_bench_press', 'close_grip_bench_press', 'decline_barbell_bench_press', 'incline_barbell_bench_press', 'jm_press')")
     }
 }
+
+
+/**
+ * v3 -> v4: a note against an exercise in a session.
+ *
+ * Nullable with no default, which matches the entity exactly, so the column can simply be
+ * appended without rebuilding the table.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE session_exercises ADD COLUMN notes TEXT")
+    }
+}

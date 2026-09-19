@@ -26,7 +26,7 @@ import com.leo.forge.data.db.entity.*
         ExerciseAvailabilityEntity::class,
         SessionExerciseEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -47,7 +47,7 @@ abstract class ForgeDatabase : RoomDatabase() {
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
                 // No destructive fallback: losing a training history to a schema bump is
                 // not an acceptable failure mode, so a missing migration must fail loudly.
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

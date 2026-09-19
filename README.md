@@ -42,14 +42,31 @@ next set, and the phone can stay in your pocket.
 Nothing here is a cage. Any session - planned or empty - owns its own exercise list, so you
 can add, swap or drop movements mid-workout without touching the block.
 
-**The workout screen holds one idea: the set you are on.** Log it and the session steps to
-the next one *in order* - including when you jumped ahead, which used to rewind you to the
-first unlogged set while the timer counted down to somewhere else. Tap any set to make it
-current. Finished exercises fold up. The footer states exactly one true thing at a time -
-resting, up next, or done - and it sits in the layout at a fixed height rather than floating
-over the list, so it can neither cover the log button nor jolt the page when rest ends. The
-rest label is derived from the current set rather than captured when the timer started, so a
-jump cannot leave it describing a set you have moved away from.
+**The workout screen is a table you tick.** Every set in the session is on screen at once as
+a row: set number, what you did on that set last time, weight, reps, and a tick. The fields
+arrive pre-filled with what the engine expects of you, so the usual case is one tap on the
+tick and nothing else. Tap the set number to mark it a warm-up; warm-ups count toward neither
+volume nor your set tally.
+
+There is deliberately **no "current set"**. An earlier version tracked one and moved it for
+you, and every problem with that screen came from the same root: a focus the app maintains is
+a second claim about where you are in the workout, and sooner or later it disagrees with the
+first. Ticking a row you jumped to would rewind you to the top while the rest timer counted
+down to somewhere else entirely. Rows are now independent, order does not matter, and there
+is nothing left to get out of step.
+
+Each exercise carries its own rest timer, its own notes, and an Add set button. The rest
+countdown is labelled with the set you just finished - a fact about the past, which cannot go
+stale the way a prediction can.
+
+## When you go off-plan
+
+Sessions own their exercises, so swapping or adding one mid-workout never edits your block by
+surprise. At the end, if you did change anything, finishing asks once: **just this session**,
+or **update my program**. The changes are listed plainly first.
+
+Loads are not part of that question - the engine learns those from what you logged either
+way. Neither are set counts, which come from your volume plan and re-derive each week.
 
 ## Finding things
 
@@ -216,7 +233,7 @@ single-user app it is less machinery, and it keeps the build to one annotation p
 
 ## Tests
 
-100 unit tests over the progression engine, the unit/loading model, volume ramp and
+101 unit tests over the progression engine, the unit/loading model, volume ramp and
 autoregulator, the generator, gym availability and equipment requirements, the CSV parser and
 the Hevy importer's date handling. `./gradlew test`.
 
@@ -229,6 +246,7 @@ Database migrations are checked separately, without a device:
 ```bash
 python3 tools/verify_migration.py 1 2
 python3 tools/verify_migration.py 2 3
+python3 tools/verify_migration.py 3 4
 ```
 
 It rebuilds the old schema in real SQLite, applies the migration exactly as the Kotlin does,
