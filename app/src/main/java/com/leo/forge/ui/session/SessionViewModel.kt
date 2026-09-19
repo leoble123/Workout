@@ -327,11 +327,11 @@ class SessionViewModel(
         }
     }
 
-    fun abandon(onDone: () -> Unit) {
+    fun discard(onDone: () -> Unit) {
         val session = sessionFlow.value ?: return onDone()
         viewModelScope.launch {
             restTimer.stop()
-            workouts.abandonSession(session.id)
+            workouts.deleteSession(session.id)
             dismissed.value = true
             onDone()
         }

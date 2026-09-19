@@ -81,6 +81,22 @@ object MesocycleGenerator {
 
     private fun isCompound(p: MovementPattern) = p != MovementPattern.ISOLATION && p != MovementPattern.CORE
 
+    /**
+     * Muscles that take well to being trained most days: small, isolation-driven, and quick
+     * to recover. Emphasising one of these raises its frequency as well as its volume, which
+     * is what people actually mean by "I need more abs" - twice a week on leg day is not it.
+     *
+     * Chest and quads are deliberately absent. Emphasising those buys more sets on the days
+     * that already train them, not a chest slot on leg day.
+     */
+    private val HIGH_FREQUENCY = setOf(
+        Muscle.ABS, Muscle.CALVES, Muscle.SIDE_DELTS,
+        Muscle.REAR_DELTS, Muscle.FOREARMS, Muscle.TRAPS,
+    )
+
+    private fun musclesFor(template: Template, emphasis: Set<Muscle>): List<Muscle> =
+        template.muscles + emphasis.filter { it in HIGH_FREQUENCY && it !in template.muscles }
+
     fun generate(spec: MesoSpec, library: List<ExerciseEntity>, personal: Map<Muscle, Landmarks> = emptyMap()): GeneratedMeso {
         val cycle = cycleFor(spec.split)
         val days = spec.daysPerWeek.coerceIn(1, 7)
@@ -105,7 +121,7 @@ object MesocycleGenerator {
 
         // How many of this week's days actually train each muscle.
         val daysTraining: Map<Muscle, Int> = Muscle.entries.associateWith { m ->
-            labelled.count { (t, _, _) -> m in t.muscles }
+            labelled.count { (t, _, _) -> m in musclesFor(t, spec.emphasis) }
         }
 
         val usedGlobally = mutableSetOf<String>()
@@ -113,7 +129,7 @@ object MesocycleGenerator {
 
         val generatedDays = labelled.map { (template, label, rotation) ->
             val usedToday = mutableSetOf<String>()
-            val perMuscle = template.muscles
+            val perMuscle = musclesFor(template, spec.emphasis)
                 .sortedBy { MUSCLE_ORDER.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }
                 .mapNotNull { muscle ->
                     val weekly = weeklySets[muscle] ?: 0
@@ -161,7 +177,7 @@ object MesocycleGenerator {
                     { exercises.indexOf(it) },
                 )
             )
-            GeneratedDay(label, template.muscles, ordered)
+            GeneratedDay(label, musclesFor(template, spec.emphasis), ordered)
         }
 
         return GeneratedMeso(spec, generatedDays, unfilled.toList())

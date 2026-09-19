@@ -31,6 +31,13 @@ carry it. Doing it in that order is what stops the usual accident of thirty sets
 and four of hamstrings. Compounds get ordered before isolations, and A/B days get different
 exercise selections.
 
+**Emphasis.** Any muscle can be emphasised, which buys it about 30% more weekly sets. For the
+small, quick-recovering ones - abs, calves, side and rear delts, traps, forearms - it also
+raises frequency, so they are trained every session instead of only on the days the split
+happens to cover them. Twice a week on leg day is not what anyone means by "more abs".
+Emphasising chest, by contrast, adds sets to the days that already press; it does not put
+chest on leg day.
+
 **Volume, week to week.** Volume starts at MEV and ramps toward MRV, with the last week a
 deload. The ramp is not fixed: three questions after each session (pump, soreness, workload)
 move next week's set count up or down. Still sore going in means it pulls a set rather than
@@ -58,6 +65,10 @@ is nothing left to get out of step.
 Each exercise carries its own rest timer, its own notes, and an Add set button. The rest
 countdown is labelled with the set you just finished - a fact about the past, which cannot go
 stale the way a prediction can.
+
+Backing out of a workout puts it down rather than ending it - Today offers to resume. Throwing
+one away is a separate, deliberate choice in the workout menu, and a finished workout can be
+deleted from its entry in History, which recalculates records and volume without it.
 
 ## When you go off-plan
 
@@ -233,7 +244,7 @@ single-user app it is less machinery, and it keeps the build to one annotation p
 
 ## Tests
 
-101 unit tests over the progression engine, the unit/loading model, volume ramp and
+104 unit tests over the progression engine, the unit/loading model, volume ramp and
 autoregulator, the generator, gym availability and equipment requirements, the CSV parser and
 the Hevy importer's date handling. `./gradlew test`.
 

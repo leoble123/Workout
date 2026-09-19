@@ -5,8 +5,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -107,6 +112,7 @@ fun SessionDetailScreen(
     vm: SessionDetailViewModel = viewModel(factory = SessionDetailViewModel.factory(sessionId)),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    var confirmDelete by remember { mutableStateOf(false) }
 
     LazyColumn(
         Modifier.fillMaxSize().background(Forge.colors.background),
@@ -160,5 +166,40 @@ fun SessionDetailScreen(
                 }
             }
         }
+
+        item {
+            Spacer(Modifier.height(12.dp))
+            SecondaryButton(
+                "Delete this workout",
+                Modifier.fillMaxWidth(),
+                tint = Forge.colors.danger,
+            ) { confirmDelete = true }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = Forge.colors.surface2,
+            title = { Text("Delete this workout?", color = Forge.colors.textPrimary) },
+            text = {
+                Text(
+                    "${state.session?.totalSets ?: 0} sets will be removed, and your records and " +
+                        "volume will be recalculated without them. This cannot be undone.",
+                    color = Forge.colors.textSecondary,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; vm.delete(onBack) }) {
+                    Text("Delete", color = Forge.colors.danger)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text("Keep it", color = Forge.colors.accent)
+                }
+            },
+        )
     }
 }

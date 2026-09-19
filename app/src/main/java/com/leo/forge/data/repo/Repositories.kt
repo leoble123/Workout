@@ -608,10 +608,14 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
         }
     }
 
-    suspend fun abandonSession(sessionId: Long) {
-        val s = db.sessions().byId(sessionId) ?: return
-        if (db.sessions().withSets(sessionId)?.sets.isNullOrEmpty()) db.sessions().delete(s)
-        else db.sessions().update(s.copy(status = SessionStatus.SKIPPED, finishedAt = System.currentTimeMillis()))
+    /**
+     * Throws a workout away entirely - in progress or long finished.
+     *
+     * Sets, session exercises and feedback all hang off the session by cascade, so records,
+     * insights and volume totals simply stop counting it. Discard means discard.
+     */
+    suspend fun deleteSession(sessionId: Long) {
+        db.sessions().byId(sessionId)?.let { db.sessions().delete(it) }
     }
 }
 

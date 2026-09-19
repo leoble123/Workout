@@ -85,8 +85,9 @@ fun SessionScreen(
 
     LaunchedEffect(settings.showRir) { vm.setShowRir(settings.showRir) }
 
-    // Nothing logged means nothing to confirm; a dialog there is just a speed bump.
-    BackHandler { if (state.doneSets == 0) onDone() else showAbandon = true }
+    // Backing out puts the workout down rather than ending it - Today offers to resume.
+    // Throwing it away is a separate, deliberate action in the menu.
+    BackHandler { onDone() }
 
     val view = LocalView.current
     DisposableEffect(settings.keepScreenOn) {
@@ -98,8 +99,9 @@ fun SessionScreen(
         SessionTopBar(
             state = state,
             onFinish = { vm.prepareFinish(); showFinish = true },
-            onLeave = { if (state.doneSets == 0) onDone() else showAbandon = true },
+            onLeave = onDone,
             onManualRest = { vm.startRest(DEFAULT_MANUAL_REST) },
+            onDiscard = { showAbandon = true },
         )
         StatsStrip(state)
 
@@ -215,21 +217,22 @@ fun SessionScreen(
         AlertDialog(
             onDismissRequest = { showAbandon = false },
             containerColor = Forge.colors.surface2,
-            title = { Text("Leave this workout?", color = Forge.colors.textPrimary) },
+            title = { Text("Discard this workout?", color = Forge.colors.textPrimary) },
             text = {
                 Text(
-                    "${state.doneSets} sets are logged. You can come back to it, or end it here.",
+                    if (state.doneSets == 0) "Nothing is logged, so there is nothing to lose."
+                    else "${state.doneSets} logged sets will be deleted. This cannot be undone.",
                     color = Forge.colors.textSecondary,
                 )
             },
             confirmButton = {
-                TextButton(onClick = { showAbandon = false; onDone() }) {
-                    Text("Keep it open", color = Forge.colors.accent)
+                TextButton(onClick = { showAbandon = false; vm.discard(onDone) }) {
+                    Text("Discard", color = Forge.colors.danger)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAbandon = false; vm.abandon(onDone) }) {
-                    Text("Discard", color = Forge.colors.danger)
+                TextButton(onClick = { showAbandon = false }) {
+                    Text("Keep training", color = Forge.colors.accent)
                 }
             },
         )
@@ -246,7 +249,9 @@ private fun SessionTopBar(
     onFinish: () -> Unit,
     onLeave: () -> Unit,
     onManualRest: () -> Unit,
+    onDiscard: () -> Unit,
 ) {
+    var menu by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -263,8 +268,24 @@ private fun SessionTopBar(
             maxLines = 1,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onManualRest) {
-            Icon(Icons.Rounded.Timer, "Start a rest", tint = Forge.colors.textSecondary)
+        Box {
+            IconButton(onClick = { menu = true }) {
+                Icon(Icons.Rounded.MoreVert, "Workout options", tint = Forge.colors.textSecondary)
+            }
+            DropdownMenu(menu, { menu = false }, containerColor = Forge.colors.surface3) {
+                DropdownMenuItem(
+                    text = { Text("Start a rest timer", color = Forge.colors.textPrimary) },
+                    onClick = { menu = false; onManualRest() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Leave it running", color = Forge.colors.textPrimary) },
+                    onClick = { menu = false; onLeave() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Discard workout", color = Forge.colors.danger) },
+                    onClick = { menu = false; onDiscard() },
+                )
+            }
         }
         Spacer(Modifier.width(4.dp))
         PrimaryButton("Finish", onClick = onFinish)

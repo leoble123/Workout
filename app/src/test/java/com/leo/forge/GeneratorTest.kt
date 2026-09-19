@@ -114,6 +114,57 @@ class GeneratorTest {
     }
 
     @Test
+    fun `every muscle can actually be picked as an emphasis`() {
+        // The emphasis chips are built from BodyPart, so a muscle missing from BodyPart is a
+        // muscle you simply cannot emphasise. Abs were missing exactly that way.
+        val offered = com.leo.forge.domain.model.BodyPart.entries.flatMap { it.muscles }.toSet()
+        Muscle.entries.forEach { assertTrue("$it cannot be emphasised", it in offered) }
+        assertEquals(Muscle.entries.size, offered.size)
+    }
+
+    @Test
+    fun `emphasising abs trains them more often, not just harder on leg day`() {
+        val byId = library.associateBy { it.id }
+        fun daysTrainingAbs(meso: com.leo.forge.domain.mesocycle.GeneratedMeso) =
+            meso.days.count { day ->
+                day.exercises.any { byId.getValue(it.exerciseId).primaryMuscle == Muscle.ABS }
+            }
+        fun absSets(meso: com.leo.forge.domain.mesocycle.GeneratedMeso) =
+            meso.days.flatMap { it.exercises }
+                .filter { byId.getValue(it.exerciseId).primaryMuscle == Muscle.ABS }
+                .sumOf { it.sets }
+
+        val plain = MesocycleGenerator.generate(
+            MesoSpec("a", SplitType.PUSH_PULL_LEGS, daysPerWeek = 6), library,
+        )
+        val emphasised = MesocycleGenerator.generate(
+            MesoSpec("b", SplitType.PUSH_PULL_LEGS, daysPerWeek = 6, emphasis = setOf(Muscle.ABS)), library,
+        )
+
+        assertTrue(
+            "abs frequency ${daysTrainingAbs(plain)} -> ${daysTrainingAbs(emphasised)}",
+            daysTrainingAbs(emphasised) > daysTrainingAbs(plain),
+        )
+        assertTrue(absSets(emphasised) > absSets(plain))
+    }
+
+    @Test
+    fun `emphasising a big muscle does not smear it across every day`() {
+        val byId = library.associateBy { it.id }
+        val emphasised = MesocycleGenerator.generate(
+            MesoSpec("c", SplitType.PUSH_PULL_LEGS, daysPerWeek = 6, emphasis = setOf(Muscle.CHEST)), library,
+        )
+        val legDays = emphasised.days.filter { it.label.startsWith("Legs") }
+        assertTrue("legs days should stay legs days", legDays.isNotEmpty())
+        legDays.forEach { day ->
+            assertTrue(
+                "chest turned up on ${day.label}",
+                day.exercises.none { byId.getValue(it.exerciseId).primaryMuscle == Muscle.CHEST },
+            )
+        }
+    }
+
+    @Test
     fun `the seeded library covers every muscle the generator can ask for`() {
         val covered = library.map { it.primaryMuscle }.toSet()
         Muscle.entries.forEach { assertTrue("no exercise for $it", it in covered) }

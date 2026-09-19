@@ -249,11 +249,17 @@ private fun BuilderCard(
 
             Spacer(Modifier.height(14.dp))
             SectionHeader("Emphasis (optional)")
+            Text(
+                "More weekly sets for whatever you pick. Abs, calves, side and rear delts, " +
+                    "traps and forearms also get trained every session rather than only on the " +
+                    "days the split already covers them.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Forge.colors.textSecondary,
+            )
+            Spacer(Modifier.height(8.dp))
             Wrap {
-                listOf(
-                    Muscle.CHEST, Muscle.LATS, Muscle.SIDE_DELTS, Muscle.BICEPS,
-                    Muscle.TRICEPS, Muscle.QUADS, Muscle.HAMSTRINGS, Muscle.GLUTES,
-                ).forEach { m ->
+                // Every muscle, grouped the way people think about them.
+                com.leo.forge.domain.model.BodyPart.entries.flatMap { it.muscles }.forEach { m ->
                     SelectChip(m.display, m in emphasis) {
                         if (m in emphasis) emphasis.remove(m) else emphasis.add(m)
                     }

@@ -11,6 +11,7 @@ import com.leo.forge.data.db.entity.SetLogEntity
 import com.leo.forge.data.repo.ExerciseRepository
 import com.leo.forge.data.repo.WorkoutRepository
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 
 @Immutable
 data class HistoryState(val sessions: List<SessionEntity> = emptyList())
@@ -37,10 +38,18 @@ data class SessionDetailState(
 )
 
 class SessionDetailViewModel(
-    sessionId: Long,
-    workouts: WorkoutRepository,
+    private val sessionId: Long,
+    private val workouts: WorkoutRepository,
     exercises: ExerciseRepository,
 ) : ViewModel() {
+
+    /** Removes the workout and everything logged in it. Records and totals stop counting it. */
+    fun delete(onDone: () -> Unit) {
+        viewModelScope.launch {
+            workouts.deleteSession(sessionId)
+            onDone()
+        }
+    }
 
     val state: StateFlow<SessionDetailState> = combine(
         workouts.observeSession(sessionId),
