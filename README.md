@@ -42,6 +42,15 @@ next set, and the phone can stay in your pocket.
 Nothing here is a cage. Any session - planned or empty - owns its own exercise list, so you
 can add, swap or drop movements mid-workout without touching the block.
 
+**The workout screen holds one idea: the set you are on.** Log it and the session steps to
+the next one *in order* - including when you jumped ahead, which used to rewind you to the
+first unlogged set while the timer counted down to somewhere else. Tap any set to make it
+current. Finished exercises fold up. The footer states exactly one true thing at a time -
+resting, up next, or done - and it sits in the layout at a fixed height rather than floating
+over the list, so it can neither cover the log button nor jolt the page when rest ends. The
+rest label is derived from the current set rather than captured when the timer started, so a
+jump cannot leave it describing a set you have moved away from.
+
 ## Finding things
 
 **Records** is a searchable list of every exercise you have trained, with its best estimated
@@ -207,7 +216,7 @@ single-user app it is less machinery, and it keeps the build to one annotation p
 
 ## Tests
 
-89 unit tests over the progression engine, the unit/loading model, volume ramp and
+100 unit tests over the progression engine, the unit/loading model, volume ramp and
 autoregulator, the generator, gym availability and equipment requirements, the CSV parser and
 the Hevy importer's date handling. `./gradlew test`.
 

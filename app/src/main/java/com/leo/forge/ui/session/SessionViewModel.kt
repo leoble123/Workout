@@ -41,8 +41,10 @@ data class SessionUiState(
     val entries: Map<String, SetEntry> = emptyMap(),
     val logged: List<SetLogEntity> = emptyList(),
     val rest: RestState = RestState.Idle,
-    /** A set you tapped, which wins over the automatic "first unlogged" focus. */
+    /** A set you tapped, which wins over the automatic focus. */
     val manualFocus: Pair<String, Int>? = null,
+    /** Where the last log landed, so the session carries on from there rather than rewinding. */
+    val lastLogged: Pair<String, Int>? = null,
     val showRir: Boolean = false,
     val prBanner: String? = null,
     val dismissed: Boolean = false,
@@ -55,26 +57,53 @@ data class SessionUiState(
     val totalSets: Int get() = plans.sumOf { it.prescription.targets.size }
     val doneSets: Int get() = logged.count { it.type == SetType.WORKING }
 
-    /** The set the screen is showing controls for: whatever you tapped, else the next unlogged one. */
+    /** Every set in the session, in the order you would perform them. */
+    val slots: List<Pair<Int, Int>>
+        get() = plans.flatMapIndexed { ei, plan -> plan.prescription.targets.map { ei to it.setIndex } }
+
+    private fun isUnlogged(slot: Pair<Int, Int>): Boolean =
+        plans.getOrNull(slot.first)?.let { loggedSet(it.exercise.id, slot.second) == null } ?: false
+
+    /**
+     * The set the screen is showing controls for.
+     *
+     * Order matters: a set you tapped wins, then the first unlogged set *after* the one you
+     * just logged, and only then the first unlogged set anywhere. That middle rule is what
+     * stops the session rewinding to the top the moment you log a set you jumped ahead to.
+     */
     val focus: Pair<Int, Int>?
         get() {
             manualFocus?.let { (exerciseId, setIndex) ->
                 val index = plans.indexOfFirst { it.exercise.id == exerciseId }
                 if (index >= 0 && loggedSet(exerciseId, setIndex) == null) return index to setIndex
             }
+            lastLogged?.let { (exerciseId, setIndex) ->
+                val index = plans.indexOfFirst { it.exercise.id == exerciseId }
+                if (index >= 0) {
+                    val ordered = slots
+                    val from = ordered.indexOf(index to setIndex)
+                    if (from >= 0) {
+                        ordered.drop(from + 1).firstOrNull { isUnlogged(it) }?.let { return it }
+                    }
+                }
+            }
             return nextFocus
         }
 
     /** The first unlogged set, in order. */
     val nextFocus: Pair<Int, Int>?
-        get() {
-            plans.forEachIndexed { ei, plan ->
-                plan.prescription.targets.forEach { t ->
-                    if (loggedSet(plan.exercise.id, t.setIndex) == null) return ei to t.setIndex
-                }
-            }
-            return null
-        }
+        get() = slots.firstOrNull { isUnlogged(it) }
+
+    val isComplete: Boolean get() = plans.isNotEmpty() && focus == null
+
+    /** What the countdown is counting down to - derived, so a jump can never leave it stale. */
+    val upNextLabel: String
+        get() = focus?.let { (ei, si) ->
+            plans.getOrNull(ei)?.let { "${it.exercise.name} · set ${si + 1}" }
+        } ?: "Last set done"
+
+    fun targetAt(slot: Pair<Int, Int>) =
+        plans.getOrNull(slot.first)?.prescription?.targets?.firstOrNull { it.setIndex == slot.second }
 
     val musclesTrained: List<Muscle>
         get() = plans.map { it.exercise.primaryMuscle }.distinct()
@@ -108,6 +137,7 @@ class SessionViewModel(
     private val loading = MutableStateFlow(true)
     private val prBanner = MutableStateFlow<String?>(null)
     private val manualFocus = MutableStateFlow<Pair<String, Int>?>(null)
+    private val lastLogged = MutableStateFlow<Pair<String, Int>?>(null)
     private val showRir = MutableStateFlow(false)
     private val dismissed = MutableStateFlow(false)
 
@@ -129,6 +159,7 @@ class SessionViewModel(
         .combine(prBanner) { s, pr -> s.copy(prBanner = pr) }
         .combine(dismissed) { s, d -> s.copy(dismissed = d) }
         .combine(manualFocus) { s, f -> s.copy(manualFocus = f) }
+        .combine(lastLogged) { s, l -> s.copy(lastLogged = l) }
         .combine(showRir) { s, r -> s.copy(showRir = r) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionUiState())
 
@@ -183,6 +214,14 @@ class SessionViewModel(
     fun focusSet(exerciseId: String, setIndex: Int) {
         manualFocus.value = exerciseId to setIndex
     }
+
+    /**
+     * Keeps the running timer describing the set you are actually on.
+     *
+     * The alarm carries the label too, so it is re-armed rather than left announcing a set
+     * you moved away from.
+     */
+    fun syncRestLabel(label: String) = restTimer.relabel(label)
 
     fun setShowRir(value: Boolean) { showRir.value = value }
 
@@ -265,6 +304,7 @@ class SessionViewModel(
                 restSecondsBefore = (restTimer.state.value as? RestState.Running)?.totalSeconds,
             )
             if (isPr) prBanner.value = "${plan.exercise.name} - best estimated 1RM yet"
+            lastLogged.value = plan.exercise.id to setIndex
             manualFocus.value = null
             if (autoStartRest) {
                 restTimer.start(plan.prescription.restSeconds, nextLabel)

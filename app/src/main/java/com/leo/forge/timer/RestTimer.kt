@@ -60,6 +60,15 @@ class RestTimer(private val context: Context) {
         scheduleAlarm(remaining, running.label)
     }
 
+    /** Renames a running rest without disturbing its deadline. */
+    fun relabel(label: String) {
+        val running = _state.value as? RestState.Running ?: return
+        if (running.label == label) return
+        _state.value = running.copy(label = label)
+        val remaining = running.remainingMillis()
+        if (remaining > 0) scheduleAlarm(remaining, label)
+    }
+
     fun stop() {
         _state.value = RestState.Idle
         cancelAlarm()

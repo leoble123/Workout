@@ -112,6 +112,9 @@ fun RestRing(
     }
 }
 
+/** Shared by the rest bar and the up-next bar so the footer never changes size. */
+val FOOTER_HEIGHT = 74.dp
+
 fun formatClock(totalSeconds: Int): String {
     val s = totalSeconds.coerceAtLeast(0)
     return "%d:%02d".format(s / 60, s % 60)
@@ -133,23 +136,28 @@ fun RestBar(
     val hapticsOn = LocalHapticsEnabled.current
     val done = seconds <= 0
 
-    // Deliberately does NOT clear the timer: the finished bar is the "go" cue, and it
-    // stays until it is dismissed or the next set replaces it.
+    // The buzz is the cue; this bar is only its visual echo. It holds briefly, then steps
+    // aside for the up-next bar, so finishing a rest never leaves a tap to clear up.
     LaunchedEffect(done) {
-        if (done && hapticsOn) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (!done) return@LaunchedEffect
+        if (hapticsOn) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        delay(8_000)
+        onSkip()
     }
 
     Row(
         modifier
             .fillMaxWidth()
+            // Fixed height so swapping between this and the up-next bar cannot jolt the page.
+            .height(FOOTER_HEIGHT)
             .clip(RoundedCornerShape(24.dp))
             .background(Forge.colors.surface2)
             .border(1.dp, if (done) Forge.colors.accent else Forge.colors.outline, RoundedCornerShape(24.dp))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            RestRing(running, Modifier.size(52.dp))
+            RestRing(running, Modifier.size(46.dp))
             Text(
                 if (done) "GO" else "$seconds",
                 style = NumericStyle.copy(fontSize = if (done) 15.sp else 17.sp),

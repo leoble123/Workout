@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.ripple
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +47,7 @@ import com.leo.forge.domain.model.*
 import com.leo.forge.domain.progression.SetTarget
 import com.leo.forge.timer.RestState
 import com.leo.forge.ui.components.*
+import com.leo.forge.ui.components.FOOTER_HEIGHT
 import com.leo.forge.ui.theme.Forge
 import com.leo.forge.ui.theme.LocalHapticsEnabled
 import com.leo.forge.ui.theme.Motion
@@ -68,8 +70,10 @@ fun SessionScreen(
     var helpFor by remember { mutableStateOf<com.leo.forge.data.db.entity.ExerciseEntity?>(null) }
     var swapTarget by remember { mutableStateOf<SessionExerciseEntity?>(null) }
     val picker by vm.picker.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
-    BackHandler { showAbandon = true }
+    // Nothing logged means nothing to confirm; a dialog there is just a speed bump.
+    BackHandler { if (state.doneSets == 0) onDone() else showAbandon = true }
 
     // Honour the keep-awake setting only while a workout is actually open, and always
     // release it on the way out.
@@ -82,19 +86,27 @@ fun SessionScreen(
     // Keep the settings-driven RIR preference in sync with the view model.
     LaunchedEffect(settings.showRir) { vm.setShowRir(settings.showRir) }
 
-    // Keep the current set in view without the user chasing it.
-    val focus = state.focus
-    LaunchedEffect(focus?.first, settings.autoAdvance) {
-        if (settings.autoAdvance && focus != null) {
-            listState.animateScrollToItem(index = (focus.first + 1).coerceAtMost(state.plans.size))
-        }
+    // A running countdown always names the set it is counting down to, even after a jump.
+    val resting = state.rest is RestState.Running
+    LaunchedEffect(state.upNextLabel, resting) {
+        if (resting) vm.syncRestLabel(state.upNextLabel)
     }
 
-    Box(Modifier.fillMaxSize().background(Forge.colors.background)) {
+    // Keep the current set in view without the user chasing it.
+    val focus = state.focus
+    LaunchedEffect(focus, settings.autoAdvance) {
+        if (!settings.autoAdvance || focus == null) return@LaunchedEffect
+        val target = (focus.first + 1).coerceAtMost(state.plans.size)
+        // Scrolling something already on screen is the twitch that makes a list feel unsteady.
+        val alreadyVisible = listState.layoutInfo.visibleItemsInfo.any { it.index == target }
+        if (!alreadyVisible) listState.animateScrollToItem(target)
+    }
+
+    Column(Modifier.fillMaxSize().background(Forge.colors.background)) {
         LazyColumn(
-            Modifier.fillMaxSize(),
+            Modifier.weight(1f),
             state = listState,
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 22.dp, bottom = 140.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 22.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
@@ -148,14 +160,17 @@ fun SessionScreen(
             }
         }
 
-        // Rest control and the PR banner both dock to the thumb, over the list.
+        // One footer that always states exactly one true thing: resting, next up, or done.
         Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(14.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            LaunchedEffect(state.prBanner) {
+                if (state.prBanner != null) {
+                    kotlinx.coroutines.delay(5_000)
+                    vm.clearPr()
+                }
+            }
             AnimatedVisibility(
                 visible = state.prBanner != null,
                 enter = fadeIn() + expandVertically(),
@@ -163,19 +178,18 @@ fun SessionScreen(
             ) {
                 PrBanner(state.prBanner.orEmpty()) { vm.clearPr() }
             }
+
             val rest = state.rest
-            AnimatedVisibility(
-                visible = rest is RestState.Running,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                (rest as? RestState.Running)?.let { running ->
-                    RestBar(
-                        running = running,
-                        onNudge = vm::nudgeRest,
-                        onSkip = vm::skipRest,
-                    )
-                }
+            if (rest is RestState.Running) {
+                RestBar(running = rest, onNudge = vm::nudgeRest, onSkip = vm::skipRest)
+            } else {
+                UpNextBar(
+                    state = state,
+                    onFinish = { showFinish = true },
+                    onGoToCurrent = {
+                        focus?.let { scope.launch { listState.animateScrollToItem(it.first + 1) } }
+                    },
+                )
             }
         }
     }
@@ -291,6 +305,90 @@ private fun SessionHeader(state: SessionUiState, onFinish: () -> Unit, onAbandon
     }
 }
 
+/**
+ * The footer when nothing is resting: what you are on, or that you are finished.
+ *
+ * It exists so there is exactly one place to look for "what now". Between the rest countdown
+ * and this, that question always has a visible answer, and neither can contradict the list
+ * because both read the same focus.
+ */
+@Composable
+private fun UpNextBar(state: SessionUiState, onFinish: () -> Unit, onGoToCurrent: () -> Unit) {
+    val focus = state.focus
+    val complete = state.isComplete
+    val shape = RoundedCornerShape(24.dp)
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(FOOTER_HEIGHT)
+            .clip(shape)
+            .background(Forge.colors.surface2)
+            .border(1.dp, if (complete) Forge.colors.accent else Forge.colors.outline, shape)
+            .then(if (focus != null) Modifier.clickable { onGoToCurrent() } else Modifier)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(46.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(if (complete) Forge.colors.accent else Forge.colors.surface3),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (complete) {
+                Icon(Icons.Rounded.Check, null, tint = Forge.colors.onAccent, modifier = Modifier.size(20.dp))
+            } else {
+                Text(
+                    "${(focus?.second ?: 0) + 1}",
+                    style = NumericStyle.copy(fontSize = 15.sp),
+                    color = Forge.colors.textSecondary,
+                )
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                when {
+                    complete -> "Session done"
+                    state.plans.isEmpty() -> "Nothing added yet"
+                    else -> "UP NEXT"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = Forge.colors.textTertiary,
+            )
+            Text(
+                when {
+                    complete -> "${state.doneSets} sets logged"
+                    state.plans.isEmpty() -> "Add an exercise to begin"
+                    else -> state.upNextLabel
+                },
+                style = MaterialTheme.typography.titleMedium,
+                color = Forge.colors.textPrimary,
+                maxLines = 1,
+            )
+        }
+
+        if (complete) {
+            Spacer(Modifier.width(10.dp))
+            PrimaryButton("Finish", onClick = onFinish)
+        } else {
+            focus?.let { slot ->
+                state.targetAt(slot)?.let { target ->
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (target.weightKg > 0) "${loadWithUnit(target.weightKg)} × ${target.reps}"
+                        else "× ${target.reps}",
+                        style = NumericStyle.copy(fontSize = 14.sp),
+                        color = Forge.colors.accent,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun PrBanner(text: String, onDismiss: () -> Unit) {
     Row(
@@ -335,27 +433,52 @@ private fun ExerciseBlock(
     var showMenu by remember { mutableStateOf(false) }
     val targets = plan.prescription.targets
 
+    // A finished exercise folds away. Everything you are not doing is noise.
+    val finished = targets.isNotEmpty() && targets.all { state.loggedSet(plan.exercise.id, it.setIndex) != null }
+    var expanded by remember(plan.id) { mutableStateOf(false) }
+    val showSets = !finished || expanded || isCurrentExercise
+
     ForgeCard(
         Modifier.fillMaxWidth(),
         color = if (isCurrentExercise) Forge.colors.surface2 else Forge.colors.surface1,
+        onClick = if (finished && !isCurrentExercise) ({ expanded = !expanded }) else null,
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (finished) {
+                    Box(
+                        Modifier.size(26.dp).clip(RoundedCornerShape(9.dp)).background(Forge.colors.accent),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Rounded.Check, null, tint = Forge.colors.onAccent, modifier = Modifier.size(16.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                }
                 Column(Modifier.weight(1f)) {
                     Text(
                         plan.exercise.name,
                         style = MaterialTheme.typography.titleLarge,
-                        color = Forge.colors.textPrimary,
+                        color = if (finished && !isCurrentExercise) Forge.colors.textSecondary else Forge.colors.textPrimary,
                     )
                     Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Chip(plan.exercise.primaryMuscle.display)
-                        Chip("${plan.repLow}-${plan.repHigh} reps")
-                        Chip("RIR ${targets.firstOrNull()?.targetRir ?: 2}")
+                    if (finished && !showSets) {
+                        val done = targets.mapNotNull { state.loggedSet(plan.exercise.id, it.setIndex) }
+                        val best = done.maxByOrNull { it.weightKg * it.reps }
+                        Text(
+                            "${done.size} sets" + (best?.let { " · top ${loadWithUnit(it.weightKg)} × ${it.reps}" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Forge.colors.textTertiary,
+                        )
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Chip(plan.exercise.primaryMuscle.display)
+                            Chip("${plan.repLow}-${plan.repHigh} reps")
+                            if (state.showRir) Chip("RIR ${targets.firstOrNull()?.targetRir ?: 2}")
+                        }
                     }
                 }
-                HelpButton(onClick = onHelp)
-                IconButton(onClick = { showWhy = !showWhy }) {
+                if (!finished || showSets) HelpButton(onClick = onHelp)
+                if (!finished || showSets) IconButton(onClick = { showWhy = !showWhy }) {
                     Icon(
                         Icons.Rounded.Info,
                         "Why this weight",
@@ -406,6 +529,7 @@ private fun ExerciseBlock(
                 }
             }
 
+            if (showSets) {
             Spacer(Modifier.height(12.dp))
 
             targets.forEach { target ->
@@ -425,7 +549,9 @@ private fun ExerciseBlock(
                     onUndo = { logged?.let(onUndo) },
                     onFocus = { onFocusSet(target.setIndex) },
                     showRir = state.showRir,
+                    showJumpHint = isCurrentExercise,
                 )
+            }
             }
         }
     }
@@ -446,6 +572,7 @@ private fun SetRow(
     onUndo: () -> Unit,
     onFocus: () -> Unit,
     showRir: Boolean,
+    showJumpHint: Boolean,
 ) {
     val haptic = LocalHapticFeedback.current
     val hapticsOn = LocalHapticsEnabled.current
@@ -583,11 +710,13 @@ private fun SetRow(
                 color = Forge.colors.textTertiary,
                 modifier = Modifier.weight(1f),
             )
-            Text(
-                "tap to jump",
-                style = MaterialTheme.typography.labelSmall,
-                color = Forge.colors.textTertiary,
-            )
+            if (showJumpHint) {
+                Text(
+                    "tap to jump",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Forge.colors.textTertiary,
+                )
+            }
         }
     }
 }
