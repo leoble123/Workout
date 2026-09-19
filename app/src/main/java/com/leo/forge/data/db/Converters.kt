@@ -43,6 +43,9 @@ class Converters {
     @TypeConverter fun sorenessToString(v: Soreness?): String? = v?.name
     @TypeConverter fun stringToSoreness(v: String?): Soreness? = v?.let { runCatching { Soreness.valueOf(it) }.getOrNull() }
 
+    @TypeConverter fun unitsToString(v: Units?): String? = v?.name
+    @TypeConverter fun stringToUnits(v: String?): Units? = v?.let { runCatching { Units.valueOf(it) }.getOrNull() }
+
     @TypeConverter fun workloadToString(v: Workload?): String? = v?.name
     @TypeConverter fun stringToWorkload(v: String?): Workload? = v?.let { runCatching { Workload.valueOf(it) }.getOrNull() }
 }

@@ -13,10 +13,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.leo.forge.core.kgText
 import com.leo.forge.ui.components.*
 import com.leo.forge.ui.theme.Forge
 import com.leo.forge.ui.theme.NumericStyle
+import com.leo.forge.ui.theme.loadWithUnit
+import com.leo.forge.ui.theme.tonnageText
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -83,8 +84,9 @@ fun HistoryScreen(
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
+                            val (vol, volUnit) = tonnageText(session.totalVolumeKg)
                             Text(
-                                "${(session.totalVolumeKg / 1000.0).let { if (it >= 10) it.roundToInt().toString() else String.format("%.1f", it) }}t",
+                                "$vol$volUnit",
                                 style = NumericStyle.copy(fontSize = 15.sp),
                                 color = Forge.colors.textPrimary,
                             )
@@ -126,7 +128,7 @@ fun SessionDetailScreen(
                 state.session?.let { s ->
                     Text(
                         s.startedAt.toLocalDate().format(dayFormat) +
-                            " · ${s.totalSets} sets · ${(s.totalVolumeKg / 1000.0).let { String.format("%.1f", it) }}t",
+                            " · ${s.totalSets} sets · " + tonnageText(s.totalVolumeKg).let { "${it.first}${it.second}" },
                         style = MaterialTheme.typography.bodySmall,
                         color = Forge.colors.textTertiary,
                     )
@@ -149,7 +151,7 @@ fun SessionDetailScreen(
                                     modifier = Modifier.width(22.dp),
                                 )
                                 Text(
-                                    "${s.weightKg.kgText()} kg × ${s.reps}" + (s.rir?.let { "  @ $it RIR" } ?: ""),
+                                    "${loadWithUnit(s.weightKg)} × ${s.reps}" + (s.rir?.let { "  @ $it RIR" } ?: ""),
                                     style = NumericStyle.copy(fontSize = 15.sp),
                                     color = Forge.colors.textPrimary,
                                     modifier = Modifier.weight(1f),

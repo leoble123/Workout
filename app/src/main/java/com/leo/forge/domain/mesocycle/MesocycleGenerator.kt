@@ -18,6 +18,12 @@ data class MesoSpec(
     val totalWeeks: Int = 5,
     val availableEquipment: Set<Equipment> = Equipment.entries.toSet(),
     val emphasis: Set<Muscle> = emptySet(),
+    /**
+     * Exercises actually performable at the active gym, already resolved from its
+     * equipment, stations and per-exercise overrides. Null means "no gym configured,
+     * assume everything".
+     */
+    val availableExerciseIds: Set<String>? = null,
 )
 
 data class GeneratedExercise(
@@ -30,7 +36,12 @@ data class GeneratedExercise(
 
 data class GeneratedDay(val label: String, val muscles: List<Muscle>, val exercises: List<GeneratedExercise>)
 
-data class GeneratedMeso(val spec: MesoSpec, val days: List<GeneratedDay>)
+data class GeneratedMeso(
+    val spec: MesoSpec,
+    val days: List<GeneratedDay>,
+    /** Muscles with no performable exercise at this gym; surfaced rather than silently dropped. */
+    val unfilledMuscles: List<Muscle> = emptyList(),
+)
 
 /**
  * Builds a whole mesocycle - day split, exercise selection, and week-1 set counts -
@@ -98,6 +109,7 @@ object MesocycleGenerator {
         }
 
         val usedGlobally = mutableSetOf<String>()
+        val unfilled = linkedSetOf<Muscle>()
 
         val generatedDays = labelled.map { (template, label, rotation) ->
             val usedToday = mutableSetOf<String>()
@@ -118,8 +130,14 @@ object MesocycleGenerator {
                     setsToday <= 7 -> 2
                     else -> 3
                 }
-                val picks = pick(library, muscle, count, rotation, spec.availableEquipment, usedToday, usedGlobally)
-                if (picks.isEmpty()) return@flatMap emptyList()
+                val picks = pick(
+                    library, muscle, count, rotation, spec.availableEquipment,
+                    spec.availableExerciseIds, usedToday, usedGlobally,
+                )
+                if (picks.isEmpty()) {
+                    unfilled += muscle
+                    return@flatMap emptyList()
+                }
 
                 // Spread the muscle's sets over its exercises, remainder to the first (heaviest) one.
                 val each = setsToday / picks.size
@@ -146,7 +164,7 @@ object MesocycleGenerator {
             GeneratedDay(label, template.muscles, ordered)
         }
 
-        return GeneratedMeso(spec, generatedDays)
+        return GeneratedMeso(spec, generatedDays, unfilled.toList())
     }
 
     /**
@@ -160,11 +178,13 @@ object MesocycleGenerator {
         count: Int,
         rotation: Int,
         available: Set<Equipment>,
+        availableIds: Set<String>?,
         usedToday: MutableSet<String>,
         usedGlobally: MutableSet<String>,
     ): List<ExerciseEntity> {
         val candidates = library
-            .filter { !it.archived && it.primaryMuscle == muscle && it.equipment in available }
+            .filter { !it.archived && it.primaryMuscle == muscle }
+            .filter { availableIds?.contains(it.id) ?: (it.equipment in available) }
             .sortedWith(compareBy({ if (isCompound(it.pattern)) 0 else 1 }, { it.name }))
         if (candidates.isEmpty()) return emptyList()
 

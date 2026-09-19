@@ -19,8 +19,13 @@ import com.leo.forge.data.db.entity.*
         MuscleFeedbackEntity::class,
         PersonalLandmarkEntity::class,
         BodyweightEntity::class,
+        GymEntity::class,
+        GymEquipmentEntity::class,
+        GymStationEntity::class,
+        StationExerciseEntity::class,
+        ExerciseAvailabilityEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -32,12 +37,15 @@ abstract class ForgeDatabase : RoomDatabase() {
     abstract fun feedback(): FeedbackDao
     abstract fun landmarks(): LandmarkDao
     abstract fun bodyweight(): BodyweightDao
+    abstract fun gyms(): GymDao
 
     companion object {
         fun build(context: Context): ForgeDatabase =
             Room.databaseBuilder(context, ForgeDatabase::class.java, "forge.db")
-                // Foreign keys are declared on the entities; without this SQLite ignores them.
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
+                // No destructive fallback: losing a training history to a schema bump is
+                // not an acceptable failure mode, so a missing migration must fail loudly.
+                .addMigrations(MIGRATION_1_2)
                 .build()
     }
 }

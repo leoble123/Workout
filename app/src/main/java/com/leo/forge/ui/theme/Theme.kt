@@ -9,11 +9,18 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import com.leo.forge.domain.model.Units
 
 val LocalForgeColors = staticCompositionLocalOf { forgeDark(oled = true) }
 
 /** Mirrors the user's haptics setting so every tappable surface honours it. */
 val LocalHapticsEnabled = staticCompositionLocalOf { true }
+
+/**
+ * What the active gym's plates are marked in. Loads are stored in kg everywhere; this is
+ * the only thing that decides how they are shown and stepped.
+ */
+val LocalUnits = staticCompositionLocalOf { Units.KG }
 
 object Forge {
     val colors: ForgeColors

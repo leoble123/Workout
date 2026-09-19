@@ -33,13 +33,21 @@ class ExerciseRepository(private val db: ForgeDatabase) {
     suspend fun byId(id: String) = db.exercises().byId(id)
     suspend fun update(e: ExerciseEntity) = db.exercises().update(e)
 
-    /** Idempotent: existing rows are ignored, so adding library entries later is safe. */
+    /**
+     * Additive and idempotent. Runs on every launch rather than only on an empty table, so
+     * exercises added to the library in a later version reach existing installs; the IGNORE
+     * conflict strategy means anything you have edited stays yours.
+     */
     suspend fun seedIfNeeded() {
-        if (db.exercises().count() == 0) db.exercises().insertAll(ExerciseSeed.all)
+        db.exercises().insertAll(ExerciseSeed.all)
     }
 }
 
-class ProgramRepository(private val db: ForgeDatabase) {
+class ProgramRepository(private val db: ForgeDatabase, private val gyms: GymRepository) {
+
+    /** Report from the most recent generation, so the UI can surface muscles it could not fill. */
+    var lastGeneration: com.leo.forge.domain.mesocycle.GeneratedMeso? = null
+        private set
 
     fun observeCurrent(): Flow<MesocycleEntity?> = db.mesocycles().observeCurrent()
     fun observeDays(mesoId: Long): Flow<List<PlannedDayWithExercises>> = db.mesocycles().observeDays(mesoId)
@@ -53,7 +61,9 @@ class ProgramRepository(private val db: ForgeDatabase) {
     /** Generates a whole block and replaces whatever was running. */
     suspend fun createMesocycle(spec: MesoSpec): Long {
         val library = db.exercises().allOnce()
-        val generated = MesocycleGenerator.generate(spec, library, personalLandmarks())
+        // Only ever build from what the active gym can actually do.
+        val resolved = spec.copy(availableExerciseIds = spec.availableExerciseIds ?: gyms.availableExerciseIds())
+        val generated = MesocycleGenerator.generate(resolved, library, personalLandmarks())
 
         db.mesocycles().retireAll()
         val mesoId = db.mesocycles().insert(
@@ -65,6 +75,7 @@ class ProgramRepository(private val db: ForgeDatabase) {
                 startedAtEpochDay = LocalDate.now().toEpochDay(),
             )
         )
+        lastGeneration = generated
         generated.days.forEachIndexed { dayIndex, day ->
             val dayId = db.mesocycles().insertDay(
                 PlannedDayEntity(mesocycleId = mesoId, dayIndex = dayIndex, label = day.label)
@@ -105,7 +116,7 @@ class ProgramRepository(private val db: ForgeDatabase) {
     suspend fun updateMeso(m: MesocycleEntity) = db.mesocycles().update(m)
 }
 
-class WorkoutRepository(private val db: ForgeDatabase) {
+class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepository) {
 
     fun observeActive(): Flow<SessionEntity?> = db.sessions().observeActive()
     fun observeRecent(limit: Int = 100): Flow<List<SessionEntity>> = db.sessions().observeRecent(limit)
@@ -171,6 +182,7 @@ class WorkoutRepository(private val db: ForgeDatabase) {
             allDays.count { d -> d.exercises.any { muscleOf(it) == m } }.coerceAtLeast(1)
         }
 
+        val units = gyms.units()
         val todayByMuscle = day.exercises.groupBy { muscleOf(it) }
         val setsPerPlanned = mutableMapOf<Long, Int>()
 
@@ -200,6 +212,7 @@ class WorkoutRepository(private val db: ForgeDatabase) {
                     totalWeeks = meso.totalWeeks,
                     repLow = planned.repLow,
                     repHigh = planned.repHigh,
+                    units = units,
                 ),
             )
         }

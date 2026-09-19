@@ -6,11 +6,11 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.leo.forge.core.container
-import com.leo.forge.core.kgText
 import com.leo.forge.data.db.entity.MesocycleEntity
 import com.leo.forge.data.db.entity.SessionEntity
 import com.leo.forge.data.db.entity.SetLogEntity
 import com.leo.forge.data.repo.ExercisePlanUi
+import com.leo.forge.data.repo.GymRepository
 import com.leo.forge.data.repo.ProgramRepository
 import com.leo.forge.data.repo.WorkoutRepository
 import com.leo.forge.domain.model.*
@@ -19,9 +19,16 @@ import com.leo.forge.timer.RestTimer
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-/** Per-set entry buffer. Strings, because a half-typed "12." is a legal intermediate state. */
+/**
+ * Per-set entry buffer.
+ *
+ * [weight] is a string in the gym's display unit, because a half-typed "12." is a legal
+ * intermediate state. [exactKg] holds the prescription's original kilograms while the field
+ * is untouched, so a target shown in pounds and logged unchanged round-trips exactly rather
+ * than drifting by a hundredth of a kilo on every conversion.
+ */
 @Immutable
-data class SetEntry(val weight: String, val reps: String, val rir: Int)
+data class SetEntry(val weight: String, val reps: String, val rir: Int, val exactKg: Double? = null)
 
 @Immutable
 data class SessionUiState(
@@ -61,8 +68,11 @@ data class SessionUiState(
 class SessionViewModel(
     private val workouts: WorkoutRepository,
     private val program: ProgramRepository,
+    private val gyms: GymRepository,
     private val restTimer: RestTimer,
 ) : ViewModel() {
+
+    private val units = MutableStateFlow(Units.KG)
 
     private val plans = MutableStateFlow<List<ExercisePlanUi>>(emptyList())
     private val entries = MutableStateFlow<Map<String, SetEntry>>(emptyMap())
@@ -95,6 +105,8 @@ class SessionViewModel(
             // Prescriptions are computed once, when the session opens. Recomputing them as
             // sets land would let the targets move under you mid-workout.
             val session = sessionFlow.filterNotNull().first()
+            val u = gyms.units()
+            units.value = u
             // By id: reopening a session from a finished block must not silently
             // re-plan it against whatever block is active now.
             val m = session.mesocycleId?.let { program.mesocycle(it) }
@@ -108,9 +120,10 @@ class SessionViewModel(
                 entries.value = computed.flatMap { plan ->
                     plan.prescription.targets.map { t ->
                         "${plan.exercise.id}:${t.setIndex}" to SetEntry(
-                            weight = if (t.weightKg > 0) t.weightKg.kgText() else "",
+                            weight = if (t.weightKg > 0) Load.format(Load.toDisplay(t.weightKg, u)) else "",
                             reps = t.reps.toString(),
                             rir = t.targetRir,
+                            exactKg = t.weightKg.takeIf { it > 0 },
                         )
                     }
                 }.toMap()
@@ -120,19 +133,25 @@ class SessionViewModel(
     }
 
     fun updateWeight(exerciseId: String, setIndex: Int, value: String) = edit(exerciseId, setIndex) {
-        it.copy(weight = value.filter { c -> c.isDigit() || c == '.' }.take(6))
+        // Typing detaches from the prescription's exact kilograms.
+        it.copy(weight = value.filter { c -> c.isDigit() || c == '.' }.take(6), exactKg = null)
     }
 
     fun updateReps(exerciseId: String, setIndex: Int, value: String) = edit(exerciseId, setIndex) {
         it.copy(reps = value.filter { c -> c.isDigit() }.take(3))
     }
 
-    fun stepWeight(exerciseId: String, setIndex: Int, direction: Int, increment: Double) =
+    /** Steps by an increment that is loadable in this gym: 2.5 kg, or 5 lb. */
+    fun stepWeight(exerciseId: String, setIndex: Int, direction: Int) {
+        val exercise = plans.value.firstOrNull { it.exercise.id == exerciseId }?.exercise ?: return
+        val step = Load.increment(exercise.equipment, units.value, exercise.loadIncrementKg)
+        if (step <= 0.0) return
         edit(exerciseId, setIndex) { e ->
             val current = e.weight.toDoubleOrNull() ?: 0.0
-            val next = (current + direction * increment).coerceAtLeast(0.0)
-            e.copy(weight = next.kgText())
+            val next = (current + direction * step).coerceAtLeast(0.0)
+            e.copy(weight = Load.format(next), exactKg = null)
         }
+    }
 
     fun stepReps(exerciseId: String, setIndex: Int, direction: Int) = edit(exerciseId, setIndex) { e ->
         val current = e.reps.toIntOrNull() ?: 0
@@ -154,7 +173,9 @@ class SessionViewModel(
         val session = sessionFlow.value ?: return
         val key = "${plan.exercise.id}:$setIndex"
         val entry = entries.value[key] ?: return
-        val weight = entry.weight.toDoubleOrNull() ?: 0.0
+        // Untouched targets log their original kilograms; edited ones convert from the
+        // gym's unit.
+        val weight = entry.exactKg ?: Load.toKg(entry.weight.toDoubleOrNull() ?: 0.0, units.value)
         val reps = entry.reps.toIntOrNull() ?: return
         if (reps <= 0) return
         val target = plan.prescription.targets.firstOrNull { it.setIndex == setIndex }
@@ -214,7 +235,7 @@ class SessionViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val c = container
-                SessionViewModel(c.workouts, c.program, c.restTimer)
+                SessionViewModel(c.workouts, c.program, c.gyms, c.restTimer)
             }
         }
     }

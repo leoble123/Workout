@@ -5,6 +5,7 @@ import com.leo.forge.data.db.ForgeDatabase
 import com.leo.forge.data.importer.HevyCsvImporter
 import com.leo.forge.data.prefs.SettingsStore
 import com.leo.forge.data.repo.ExerciseRepository
+import com.leo.forge.data.repo.GymRepository
 import com.leo.forge.data.repo.ProgramRepository
 import com.leo.forge.data.repo.StatsRepository
 import com.leo.forge.data.repo.WorkoutRepository
@@ -26,8 +27,9 @@ class AppContainer(context: Context) {
     val restTimer: RestTimer by lazy { RestTimer(appContext) }
 
     val exercises: ExerciseRepository by lazy { ExerciseRepository(db) }
-    val program: ProgramRepository by lazy { ProgramRepository(db) }
-    val workouts: WorkoutRepository by lazy { WorkoutRepository(db) }
+    val gyms: GymRepository by lazy { GymRepository(db) }
+    val program: ProgramRepository by lazy { ProgramRepository(db, gyms) }
+    val workouts: WorkoutRepository by lazy { WorkoutRepository(db, gyms) }
     val stats: StatsRepository by lazy { StatsRepository(db) }
     val importer: HevyCsvImporter by lazy { HevyCsvImporter(db) }
 }

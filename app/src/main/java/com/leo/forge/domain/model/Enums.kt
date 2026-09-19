@@ -28,15 +28,36 @@ enum class Muscle(val display: String, val group: MuscleGroup) {
 
 enum class MuscleGroup { PUSH, PULL, LEGS, CORE }
 
-enum class Equipment(val display: String) {
-    BARBELL("Barbell"),
-    DUMBBELL("Dumbbell"),
-    MACHINE("Machine"),
-    CABLE("Cable"),
-    SMITH("Smith machine"),
+enum class EquipmentCategory(val display: String) {
+    FREE_WEIGHT("Free weights"),
+    MACHINE("Machines & cables"),
     BODYWEIGHT("Bodyweight"),
-    BANDS("Bands"),
-    OTHER("Other");
+    OTHER("Other"),
+}
+
+/**
+ * Deliberately finer-grained than "machine".
+ *
+ * A pin stack and a plate-loaded machine are not the same tool: one steps in 5 kg and the
+ * other takes whatever plates you put on it. And in a minimal gym the difference between
+ * owning a pull-up bar and owning a lat pulldown decides half the programme.
+ */
+enum class Equipment(val display: String, val category: EquipmentCategory) {
+    BARBELL("Barbell", EquipmentCategory.FREE_WEIGHT),
+    EZ_BAR("EZ / curl bar", EquipmentCategory.FREE_WEIGHT),
+    TRAP_BAR("Trap bar", EquipmentCategory.FREE_WEIGHT),
+    DUMBBELL("Dumbbells", EquipmentCategory.FREE_WEIGHT),
+    KETTLEBELL("Kettlebells", EquipmentCategory.FREE_WEIGHT),
+    MACHINE_SELECTORIZED("Machine (pin stack)", EquipmentCategory.MACHINE),
+    MACHINE_PLATE_LOADED("Machine (plate loaded)", EquipmentCategory.MACHINE),
+    CABLE("Cable stack", EquipmentCategory.MACHINE),
+    SMITH("Smith machine", EquipmentCategory.MACHINE),
+    BODYWEIGHT("Bodyweight", EquipmentCategory.BODYWEIGHT),
+    PULL_UP_BAR("Pull-up bar", EquipmentCategory.BODYWEIGHT),
+    DIP_STATION("Dip bars", EquipmentCategory.BODYWEIGHT),
+    BANDS("Bands", EquipmentCategory.OTHER),
+    LANDMINE("Landmine", EquipmentCategory.OTHER),
+    OTHER("Other", EquipmentCategory.OTHER);
 }
 
 /**

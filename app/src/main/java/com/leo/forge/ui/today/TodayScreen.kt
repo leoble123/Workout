@@ -17,13 +17,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.leo.forge.core.kgText
 import com.leo.forge.data.repo.ExercisePlanUi
 import com.leo.forge.domain.progression.ProgressionEngine
 import com.leo.forge.domain.volume.VolumeLandmarks
 import com.leo.forge.ui.components.*
 import com.leo.forge.ui.theme.Forge
 import com.leo.forge.ui.theme.NumericStyle
+import com.leo.forge.ui.theme.loadWithUnit
+import com.leo.forge.ui.theme.tonnageText
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -106,12 +107,8 @@ fun TodayScreen(
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatTile("Sessions", state.sessionsThisWeek.toString(), Modifier.weight(1f))
-                    StatTile(
-                        "Tonnage",
-                        (state.tonnageThisWeek / 1000.0).let { if (it >= 10) it.roundToInt().toString() else String.format("%.1f", it) },
-                        Modifier.weight(1f),
-                        unit = "t",
-                    )
+                    val (volume, volumeUnit) = tonnageText(state.tonnageThisWeek)
+                    StatTile("Tonnage", volume, Modifier.weight(1f), unit = volumeUnit)
                 }
             }
         }
@@ -225,7 +222,7 @@ private fun PreviewRow(plan: ExercisePlanUi) {
             buildString {
                 append("${plan.prescription.targets.size}×")
                 append(first?.reps ?: plan.planned.repLow)
-                if (first != null && first.weightKg > 0.0) append(" · ${first.weightKg.kgText()}kg")
+                if (first != null && first.weightKg > 0.0) append(" · ${loadWithUnit(first.weightKg)}")
             },
             style = NumericStyle.copy(fontSize = 13.sp, fontWeight = FontWeight.Medium),
             color = Forge.colors.textSecondary,

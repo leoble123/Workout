@@ -37,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.leo.forge.core.kgText
 import com.leo.forge.data.prefs.ForgeSettings
 import com.leo.forge.data.repo.ExercisePlanUi
 import com.leo.forge.domain.model.*
@@ -48,6 +47,8 @@ import com.leo.forge.ui.theme.Forge
 import com.leo.forge.ui.theme.LocalHapticsEnabled
 import com.leo.forge.ui.theme.Motion
 import com.leo.forge.ui.theme.NumericStyle
+import com.leo.forge.ui.theme.loadWithUnit
+import com.leo.forge.ui.theme.unitLabel
 import com.leo.forge.ui.theme.pressScale
 
 @Composable
@@ -99,7 +100,7 @@ fun SessionScreen(
                     plan = plan,
                     state = state,
                     isCurrentExercise = focus?.first == index,
-                    onStepWeight = { si, dir -> vm.stepWeight(plan.exercise.id, si, dir, plan.exercise.loadIncrementKg) },
+                    onStepWeight = { si, dir -> vm.stepWeight(plan.exercise.id, si, dir) },
                     onStepReps = { si, dir -> vm.stepReps(plan.exercise.id, si, dir) },
                     onWeight = { si, v -> vm.updateWeight(plan.exercise.id, si, v) },
                     onReps = { si, v -> vm.updateReps(plan.exercise.id, si, v) },
@@ -321,7 +322,6 @@ private fun ExerciseBlock(
                     entry = state.entries[state.key(plan.exercise.id, target.setIndex)],
                     logged = logged,
                     isActive = isActive,
-                    increment = plan.exercise.loadIncrementKg,
                     onStepWeight = { d -> onStepWeight(target.setIndex, d) },
                     onStepReps = { d -> onStepReps(target.setIndex, d) },
                     onWeight = { v -> onWeight(target.setIndex, v) },
@@ -341,7 +341,6 @@ private fun SetRow(
     entry: SetEntry?,
     logged: com.leo.forge.data.db.entity.SetLogEntity?,
     isActive: Boolean,
-    increment: Double,
     onStepWeight: (Int) -> Unit,
     onStepReps: (Int) -> Unit,
     onWeight: (String) -> Unit,
@@ -370,7 +369,7 @@ private fun SetRow(
             }
             Spacer(Modifier.width(12.dp))
             Text(
-                "${logged.weightKg.kgText()} kg × ${logged.reps}" + (logged.rir?.let { "  @ $it RIR" } ?: ""),
+                "${loadWithUnit(logged.weightKg)} × ${logged.reps}" + (logged.rir?.let { "  @ $it RIR" } ?: ""),
                 style = NumericStyle.copy(fontSize = 16.sp),
                 color = Forge.colors.textPrimary,
             )
@@ -405,7 +404,7 @@ private fun SetRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ValueStepper(
                     value = entry?.weight.orEmpty(),
-                    label = "kg",
+                    label = unitLabel(),
                     onValueChange = onWeight,
                     onStep = onStepWeight,
                     decimal = true,
@@ -466,7 +465,7 @@ private fun SetRow(
             }
             Spacer(Modifier.width(12.dp))
             Text(
-                if (target.weightKg > 0) "${target.weightKg.kgText()} kg × ${target.reps}" else "— × ${target.reps}",
+                if (target.weightKg > 0) "${loadWithUnit(target.weightKg)} × ${target.reps}" else "— × ${target.reps}",
                 style = NumericStyle.copy(fontSize = 15.sp),
                 color = Forge.colors.textTertiary,
             )

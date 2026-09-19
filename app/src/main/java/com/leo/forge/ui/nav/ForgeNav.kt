@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Today
@@ -25,6 +26,7 @@ import androidx.navigation.compose.rememberNavController
 import com.leo.forge.data.prefs.ForgeSettings
 import com.leo.forge.ui.history.HistoryScreen
 import com.leo.forge.ui.history.SessionDetailScreen
+import com.leo.forge.ui.gym.GymScreen
 import com.leo.forge.ui.program.ProgramScreen
 import com.leo.forge.ui.session.SessionScreen
 import com.leo.forge.ui.settings.SettingsScreen
@@ -32,6 +34,8 @@ import com.leo.forge.ui.stats.StatsScreen
 import androidx.compose.runtime.CompositionLocalProvider
 import com.leo.forge.ui.theme.Forge
 import com.leo.forge.ui.theme.LocalHapticsEnabled
+import com.leo.forge.ui.theme.LocalUnits
+import com.leo.forge.domain.model.Units
 import com.leo.forge.ui.today.TodayScreen
 
 object Routes {
@@ -40,6 +44,7 @@ object Routes {
     const val STATS = "stats"
     const val SETTINGS = "settings"
     const val PROGRAM = "program"
+    const val GYM = "gym"
     const val SESSION = "session"
     const val SESSION_DETAIL = "session_detail/{id}"
     fun sessionDetail(id: Long) = "session_detail/$id"
@@ -52,12 +57,14 @@ private val tabs = listOf(
     Tab(Routes.HISTORY, "History", Icons.Rounded.History),
     Tab(Routes.STATS, "Stats", Icons.Rounded.BarChart),
     Tab(Routes.PROGRAM, "Program", Icons.Rounded.CalendarMonth),
+    Tab(Routes.GYM, "Gym", Icons.Rounded.FitnessCenter),
     Tab(Routes.SETTINGS, "Settings", Icons.Rounded.Settings),
 )
 
 @Composable
-fun ForgeRoot(settings: ForgeSettings) = CompositionLocalProvider(
+fun ForgeRoot(settings: ForgeSettings, units: Units) = CompositionLocalProvider(
     LocalHapticsEnabled provides settings.haptics,
+    LocalUnits provides units,
 ) {
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
@@ -126,6 +133,7 @@ fun ForgeRoot(settings: ForgeSettings) = CompositionLocalProvider(
             }
             composable(Routes.STATS) { StatsScreen() }
             composable(Routes.PROGRAM) { ProgramScreen() }
+            composable(Routes.GYM) { GymScreen() }
             composable(Routes.SETTINGS) { SettingsScreen() }
             composable(Routes.SESSION) {
                 SessionScreen(settings = settings, onDone = { nav.popBackStack() })

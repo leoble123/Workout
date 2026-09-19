@@ -18,7 +18,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.leo.forge.domain.volume.VolumeLandmarks
 import com.leo.forge.ui.components.*
+import com.leo.forge.domain.model.Load
 import com.leo.forge.ui.theme.Forge
+import com.leo.forge.ui.theme.LocalUnits
+import com.leo.forge.ui.theme.tonnageText
+import com.leo.forge.ui.theme.unitLabel
 import kotlin.math.roundToInt
 
 @Composable
@@ -37,14 +41,8 @@ fun StatsScreen(vm: StatsViewModel = viewModel(factory = StatsViewModel.Factory)
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatTile("Sessions", state.sessions.toString(), Modifier.weight(1f))
-                StatTile(
-                    "Tonnage",
-                    (state.tonnage / 1000.0).let {
-                        if (it >= 10) it.roundToInt().toString() else String.format("%.1f", it)
-                    },
-                    Modifier.weight(1f),
-                    unit = "t",
-                )
+                val (volume, volumeUnit) = tonnageText(state.tonnage)
+                StatTile("Tonnage", volume, Modifier.weight(1f), unit = volumeUnit)
             }
         }
 
@@ -66,7 +64,11 @@ fun StatsScreen(vm: StatsViewModel = viewModel(factory = StatsViewModel.Factory)
                         )
                         Spacer(Modifier.height(12.dp))
                         // Single series, so no legend: the title above names it.
-                        E1rmChart(points = state.series, modifier = Modifier.fillMaxWidth())
+                        E1rmChart(
+                            points = state.series.map { it.copy(y = Load.toDisplay(it.y, LocalUnits.current)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            valueSuffix = unitLabel(),
+                        )
                         Spacer(Modifier.height(14.dp))
                         Row(Modifier.horizontalScroll(rememberScrollState())) {
                             state.trackable.take(20).forEach { ex ->

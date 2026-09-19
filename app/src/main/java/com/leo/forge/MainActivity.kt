@@ -9,6 +9,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.leo.forge.data.prefs.ForgeSettings
+import com.leo.forge.domain.model.Units
 import com.leo.forge.ui.nav.ForgeRoot
 import com.leo.forge.ui.theme.ForgeTheme
 import kotlinx.coroutines.flow.stateIn
@@ -36,11 +37,14 @@ class MainActivity : ComponentActivity() {
         val container = (application as ForgeApp).container
         val settingsFlow = container.settings.settings
             .stateIn(lifecycleScope, SharingStarted.Eagerly, ForgeSettings())
+        val unitsFlow = container.gyms.observeUnits()
+            .stateIn(lifecycleScope, SharingStarted.Eagerly, Units.KG)
 
         setContent {
             val settings by settingsFlow.collectAsStateWithLifecycle()
+            val units by unitsFlow.collectAsStateWithLifecycle()
             ForgeTheme(oled = settings.oledBlack) {
-                ForgeRoot(settings = settings)
+                ForgeRoot(settings = settings, units = units)
             }
         }
     }

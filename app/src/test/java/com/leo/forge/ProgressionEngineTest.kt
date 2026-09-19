@@ -86,7 +86,7 @@ class ProgressionEngineTest {
     @Test
     fun `every suggested load lands on a real increment of the implement`() {
         // A machine that steps in 5 kg must never be told to load 82.5.
-        val machine = bench.copy(id = "m", equipment = Equipment.MACHINE, loadIncrementKg = 5.0)
+        val machine = bench.copy(id = "m", equipment = Equipment.MACHINE_SELECTORIZED, loadIncrementKg = 5.0)
         val p = ProgressionEngine.prescribe(machine, listOf(set(10, 80.0, 4)), setCount = 3, weekIndex = 1, totalWeeks = 5)
         p.targets.forEach { assertEquals(0.0, it.weightKg % 5.0, 0.001) }
     }

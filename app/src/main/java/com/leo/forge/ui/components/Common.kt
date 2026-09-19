@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -204,4 +206,45 @@ fun EmptyState(
             action()
         }
     }
+}
+
+/**
+ * A plain themed text field.
+ *
+ * Free text matters here: the app cannot know what a machine is called or where it sits on
+ * the floor, and a blank you can fill in beats a guess it cannot verify.
+ */
+@Composable
+fun ForgeTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String?,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    singleLine: Boolean = true,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.fillMaxWidth(),
+        label = label?.let { { Text(it, style = MaterialTheme.typography.labelSmall) } },
+        placeholder = placeholder?.let {
+            { Text(it, style = MaterialTheme.typography.bodySmall, color = Forge.colors.textTertiary) }
+        },
+        singleLine = singleLine,
+        minLines = if (singleLine) 1 else 2,
+        shape = RoundedCornerShape(14.dp),
+        textStyle = MaterialTheme.typography.bodyMedium,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Forge.colors.textPrimary,
+            unfocusedTextColor = Forge.colors.textPrimary,
+            focusedBorderColor = Forge.colors.accent,
+            unfocusedBorderColor = Forge.colors.outline,
+            focusedLabelColor = Forge.colors.accent,
+            unfocusedLabelColor = Forge.colors.textTertiary,
+            cursorColor = Forge.colors.accent,
+            focusedContainerColor = Forge.colors.surface2,
+            unfocusedContainerColor = Forge.colors.surface2,
+        ),
+    )
 }

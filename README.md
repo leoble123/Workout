@@ -31,6 +31,30 @@ adding one.
 **Rest and flow.** The timer starts itself when a set is logged, the list follows you to the
 next set, and the phone can stay in your pocket.
 
+## Your gym, and the unit it is marked in
+
+Programs are generated from what is actually on the floor, not from a generic commercial gym.
+
+A gym profile carries its equipment (fifteen categories — a pin stack is not a plate-loaded
+machine, a pull-up bar is not a lat pulldown), free-text detail on any of them, and a list of
+**stations**: named machines with your own notes and an explicit list of what each one can do.
+A station grants its exercises even when its equipment category is switched off, which is how
+a sparse gym says "no machines, except the shoulder press and pec deck on that one combo unit"
+without lying in either direction. Availability resolves most-specific-first: a per-exercise
+yes/no beats a station, which beats the broad category.
+
+Station names are yours to write. The app has no way to verify a manufacturer's model number
+and does not invent one — what it actually needs is the exercise list.
+
+If the gym cannot train a muscle at all, the generator says so instead of quietly dropping it.
+
+**Units belong to the gym, not to you.** An Australian gym's plates are marked in kg and step
+in 2.5; a US gym's step in 5 lb. That is not a display preference — rounding a suggestion in
+kilograms and converting it afterwards yields numbers nobody can load ("220.5 lb"), which
+forces exactly the manual override this app exists to remove. So the progression maths runs in
+the gym's own unit and only converts back to kilograms for storage. Fly between gyms, flip the
+toggle, and every suggestion lands on plates that exist in the room you are standing in.
+
 Every prescription carries a plain-English reason, reachable from the ⓘ on any exercise. A
 number you cannot interrogate is a number you stop trusting.
 
@@ -85,11 +109,13 @@ Single-module, single-activity Compose. Kotlin 2.0, Room, DataStore, Navigation 
 domain/          the parts with no Android in them, and the parts worth testing
   progression/   ProgressionEngine (loads and reps), VolumeAutoregulator (set counts)
   volume/        per-muscle MV/MEV/MAV/MRV landmarks and the weekly ramp
+  gym/           which exercises a given gym can actually perform
+  model/Load     unit conversion and per-implement, per-unit load increments
   mesocycle/     MesocycleGenerator — split layout, volume allocation, exercise selection
   model/         enums and the 1RM maths
 data/
   db/            Room entities, DAOs, converters
-  seed/          123 seeded exercises with per-implement load increments
+  seed/          147 seeded exercises, plus gym presets
   importer/      RFC 4180 CSV reader, Hevy importer, name classifier
   repo/          repositories; WorkoutRepository.prescribe() is where a day becomes targets
 ui/              theme and motion system, shared components, one package per screen
@@ -111,17 +137,29 @@ single-user app it is less machinery, and it keeps the build to one annotation p
 - **Personal landmark learning.** `PersonalLandmarkEntity` is read everywhere it should be,
   but nothing writes to it yet, so landmarks are still the population defaults.
 - **Bodyweight logging UI** — repository and table exist, no screen.
-- **Pounds.** Everything is stored and shown in kg. The plumbing for a unit preference is
-  there but the toggle is not, because a switch that leaves every screen in kg is worse than
-  no switch — say the word and I'll run lb through the display and entry paths properly.
 - **Light theme.**
+- **Per-exercise gym notes.** The schema carries notes against an exercise at a gym ("this
+  leg press starts at 60"), and the session screen does not surface them yet.
 - **Baseline profile.** `profileinstaller` ships, but no profile is generated yet.
 
 ## Tests
 
-51 unit tests over the progression engine, volume ramp and autoregulator, the generator, the
-CSV parser and the Hevy importer's date handling. `./gradlew test`.
+71 unit tests over the progression engine, the unit/loading model, volume ramp and
+autoregulator, the generator, gym availability, the CSV parser and the Hevy importer's date
+handling. `./gradlew test`.
 
-Two of them exist because they caught real bugs: a classifier rule order that filed every
-imported leg curl as a biceps exercise, and a 1RM blend that ran the wrong way and inflated
-high-rep sets.
+Several exist because they caught real bugs: a classifier rule order that filed every imported
+leg curl as a biceps exercise (and, later, pike push-ups as chest and reverse Nordics as
+hamstrings), and a 1RM blend that ran the wrong way and inflated high-rep sets.
+
+Database migrations are checked separately, without a device:
+
+```bash
+python3 tools/verify_migration.py 1 2
+```
+
+It rebuilds the old schema in real SQLite, applies the migration exactly as the Kotlin does,
+and diffs columns, primary keys, foreign keys and indices against Room's own exported schema
+for the new version — plus the data rewrites. Room validates the schema when it opens the
+database, so a migration that merely looks right is one column-order mismatch away from an
+app that will not launch.

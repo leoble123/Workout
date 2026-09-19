@@ -22,6 +22,8 @@ object MuscleGuesser {
      */
     private val rules: List<Triple<List<String>, Muscle, MovementPattern>> = listOf(
         // -- specific phrases that contain a more general keyword
+        Triple(listOf("reverse nordic", "sissy squat"), Muscle.QUADS, MovementPattern.ISOLATION),
+        Triple(listOf("pike push"), Muscle.FRONT_DELTS, MovementPattern.VERTICAL_PUSH),
         Triple(listOf("leg curl", "hamstring curl", "nordic"), Muscle.HAMSTRINGS, MovementPattern.ISOLATION),
         Triple(listOf("wrist curl", "reverse wrist"), Muscle.FOREARMS, MovementPattern.ISOLATION),
         Triple(listOf("reverse curl"), Muscle.FOREARMS, MovementPattern.ISOLATION),
@@ -74,12 +76,23 @@ object MuscleGuesser {
         val n = name.lowercase()
         return when {
             n.contains("smith") -> Equipment.SMITH
-            n.contains("barbell") || n.contains("ez") -> Equipment.BARBELL
+            n.contains("landmine") || n.contains("t-bar") || n.contains("meadows") -> Equipment.LANDMINE
+            n.contains("trap bar") || n.contains("hex bar") -> Equipment.TRAP_BAR
+            n.contains("ez") -> Equipment.EZ_BAR
+            n.contains("kettlebell") -> Equipment.KETTLEBELL
             n.contains("dumbbell") -> Equipment.DUMBBELL
-            n.contains("cable") -> Equipment.CABLE
-            n.contains("machine") || n.contains("press") && n.contains("leg") -> Equipment.MACHINE
+            n.contains("barbell") -> Equipment.BARBELL
+            n.contains("cable") || n.contains("pulldown") || n.contains("pull-through") -> Equipment.CABLE
+            n.contains("pull-up") || n.contains("pullup") || n.contains("chin-up") ||
+                n.contains("chinup") || n.contains("hanging") -> Equipment.PULL_UP_BAR
+            n.contains("dip") -> Equipment.DIP_STATION
             n.contains("band") -> Equipment.BANDS
-            n.contains("bodyweight") || n.contains("pull-up") || n.contains("push-up") -> Equipment.BODYWEIGHT
+            n.contains("leg press") || n.contains("hack squat") || n.contains("pendulum") ||
+                n.contains("plate loaded") || n.contains("plate-loaded") -> Equipment.MACHINE_PLATE_LOADED
+            n.contains("machine") || n.contains("pec deck") || n.contains("leg extension") ||
+                n.contains("leg curl") || n.contains("abduction") || n.contains("adductor") -> Equipment.MACHINE_SELECTORIZED
+            n.contains("push-up") || n.contains("pushup") || n.contains("bodyweight") ||
+                n.contains("plank") || n.contains("nordic") || n.contains("sissy") -> Equipment.BODYWEIGHT
             else -> Equipment.OTHER
         }
     }
