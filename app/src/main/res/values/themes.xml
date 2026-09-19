@@ -1,0 +1,13 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Only the launch window lives in XML; everything after is Compose. -->
+    <style name="Theme.Forge.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/forge_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_forge_mark</item>
+        <item name="postSplashScreenTheme">@style/Theme.Forge</item>
+    </style>
+    <style name="Theme.Forge" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/forge_bg</item>
+    </style>
+</resources>

@@ -1,0 +1,176 @@
+package com.leo.forge.data.seed
+
+import com.leo.forge.data.db.entity.ExerciseEntity
+import com.leo.forge.domain.model.Equipment
+import com.leo.forge.domain.model.MovementPattern
+import com.leo.forge.domain.model.Muscle
+
+/**
+ * The starting exercise library, seeded once on first launch.
+ *
+ * Load increments are per-implement rather than a flat 2.5 kg, because a suggestion
+ * the gym cannot actually load ("82.5 kg" on a 5 kg-stack machine) is worse than no
+ * suggestion at all: it forces exactly the manual override this app exists to remove.
+ */
+object ExerciseSeed {
+
+    private fun incrementFor(equipment: Equipment): Double = when (equipment) {
+        Equipment.BARBELL -> 2.5      // a pair of 1.25 kg plates
+        Equipment.SMITH -> 2.5
+        Equipment.DUMBBELL -> 2.0     // most racks step in 2 kg up to ~30 kg
+        Equipment.CABLE -> 2.5
+        Equipment.MACHINE -> 5.0      // pin stacks are rarely finer than this
+        Equipment.BODYWEIGHT -> 2.5   // added load on a belt
+        Equipment.BANDS -> 0.0        // progress by reps only
+        Equipment.OTHER -> 2.5
+    }
+
+    private fun ex(
+        id: String,
+        name: String,
+        primary: Muscle,
+        equipment: Equipment,
+        pattern: MovementPattern,
+        repLow: Int,
+        repHigh: Int,
+        secondary: List<Muscle> = emptyList(),
+        unilateral: Boolean = false,
+    ) = ExerciseEntity(
+        id = id,
+        name = name,
+        primaryMuscle = primary,
+        secondaryMuscles = secondary,
+        equipment = equipment,
+        pattern = pattern,
+        isUnilateral = unilateral,
+        repLow = repLow,
+        repHigh = repHigh,
+        loadIncrementKg = incrementFor(equipment),
+    )
+
+    val all: List<ExerciseEntity> = listOf(
+        ex("barbell_bench_press", "Barbell Bench Press", Muscle.CHEST, Equipment.BARBELL, MovementPattern.HORIZONTAL_PUSH, 5, 10, secondary = listOf(Muscle.TRICEPS, Muscle.FRONT_DELTS)),
+        ex("incline_barbell_bench_press", "Incline Barbell Bench Press", Muscle.CHEST, Equipment.BARBELL, MovementPattern.HORIZONTAL_PUSH, 6, 10, secondary = listOf(Muscle.FRONT_DELTS, Muscle.TRICEPS)),
+        ex("decline_barbell_bench_press", "Decline Barbell Bench Press", Muscle.CHEST, Equipment.BARBELL, MovementPattern.HORIZONTAL_PUSH, 6, 10, secondary = listOf(Muscle.TRICEPS)),
+        ex("dumbbell_bench_press", "Dumbbell Bench Press", Muscle.CHEST, Equipment.DUMBBELL, MovementPattern.HORIZONTAL_PUSH, 6, 12, secondary = listOf(Muscle.TRICEPS, Muscle.FRONT_DELTS)),
+        ex("incline_dumbbell_press", "Incline Dumbbell Press", Muscle.CHEST, Equipment.DUMBBELL, MovementPattern.HORIZONTAL_PUSH, 6, 12, secondary = listOf(Muscle.FRONT_DELTS, Muscle.TRICEPS)),
+        ex("machine_chest_press", "Machine Chest Press", Muscle.CHEST, Equipment.MACHINE, MovementPattern.HORIZONTAL_PUSH, 8, 15, secondary = listOf(Muscle.TRICEPS, Muscle.FRONT_DELTS)),
+        ex("incline_machine_press", "Incline Machine Press", Muscle.CHEST, Equipment.MACHINE, MovementPattern.HORIZONTAL_PUSH, 8, 15, secondary = listOf(Muscle.FRONT_DELTS, Muscle.TRICEPS)),
+        ex("smith_machine_bench_press", "Smith Machine Bench Press", Muscle.CHEST, Equipment.SMITH, MovementPattern.HORIZONTAL_PUSH, 6, 12, secondary = listOf(Muscle.TRICEPS)),
+        ex("smith_incline_press", "Smith Incline Press", Muscle.CHEST, Equipment.SMITH, MovementPattern.HORIZONTAL_PUSH, 6, 12, secondary = listOf(Muscle.FRONT_DELTS, Muscle.TRICEPS)),
+        ex("weighted_dip", "Weighted Dip", Muscle.CHEST, Equipment.BODYWEIGHT, MovementPattern.HORIZONTAL_PUSH, 6, 12, secondary = listOf(Muscle.TRICEPS, Muscle.FRONT_DELTS)),
+        ex("push_up", "Push-Up", Muscle.CHEST, Equipment.BODYWEIGHT, MovementPattern.HORIZONTAL_PUSH, 10, 25, secondary = listOf(Muscle.TRICEPS)),
+        ex("pec_deck", "Pec Deck", Muscle.CHEST, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 15),
+        ex("cable_fly", "Cable Fly", Muscle.CHEST, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15),
+        ex("low_to_high_cable_fly", "Low-to-High Cable Fly", Muscle.CHEST, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15),
+        ex("high_to_low_cable_fly", "High-to-Low Cable Fly", Muscle.CHEST, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15),
+        ex("dumbbell_fly", "Dumbbell Fly", Muscle.CHEST, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 15),
+        ex("incline_dumbbell_fly", "Incline Dumbbell Fly", Muscle.CHEST, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 15),
+        ex("overhead_press", "Overhead Press", Muscle.FRONT_DELTS, Equipment.BARBELL, MovementPattern.VERTICAL_PUSH, 5, 10, secondary = listOf(Muscle.TRICEPS, Muscle.SIDE_DELTS)),
+        ex("seated_dumbbell_shoulder_press", "Seated Dumbbell Shoulder Press", Muscle.FRONT_DELTS, Equipment.DUMBBELL, MovementPattern.VERTICAL_PUSH, 6, 12, secondary = listOf(Muscle.TRICEPS, Muscle.SIDE_DELTS)),
+        ex("machine_shoulder_press", "Machine Shoulder Press", Muscle.FRONT_DELTS, Equipment.MACHINE, MovementPattern.VERTICAL_PUSH, 8, 15, secondary = listOf(Muscle.TRICEPS)),
+        ex("smith_overhead_press", "Smith Overhead Press", Muscle.FRONT_DELTS, Equipment.SMITH, MovementPattern.VERTICAL_PUSH, 6, 12, secondary = listOf(Muscle.TRICEPS)),
+        ex("arnold_press", "Arnold Press", Muscle.FRONT_DELTS, Equipment.DUMBBELL, MovementPattern.VERTICAL_PUSH, 8, 12, secondary = listOf(Muscle.SIDE_DELTS, Muscle.TRICEPS)),
+        ex("dumbbell_front_raise", "Dumbbell Front Raise", Muscle.FRONT_DELTS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 15),
+        ex("cable_front_raise", "Cable Front Raise", Muscle.FRONT_DELTS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15),
+        ex("dumbbell_lateral_raise", "Dumbbell Lateral Raise", Muscle.SIDE_DELTS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 20),
+        ex("cable_lateral_raise", "Cable Lateral Raise", Muscle.SIDE_DELTS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 20, unilateral = true),
+        ex("machine_lateral_raise", "Machine Lateral Raise", Muscle.SIDE_DELTS, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 20),
+        ex("lean_away_lateral_raise", "Lean-Away Lateral Raise", Muscle.SIDE_DELTS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 20, unilateral = true),
+        ex("upright_row", "Upright Row", Muscle.SIDE_DELTS, Equipment.BARBELL, MovementPattern.ISOLATION, 8, 15, secondary = listOf(Muscle.TRAPS)),
+        ex("cable_upright_row", "Cable Upright Row", Muscle.SIDE_DELTS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15, secondary = listOf(Muscle.TRAPS)),
+        ex("reverse_pec_deck", "Reverse Pec Deck", Muscle.REAR_DELTS, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 20, secondary = listOf(Muscle.UPPER_BACK)),
+        ex("cable_reverse_fly", "Cable Reverse Fly", Muscle.REAR_DELTS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 20, secondary = listOf(Muscle.UPPER_BACK)),
+        ex("dumbbell_rear_delt_fly", "Dumbbell Rear Delt Fly", Muscle.REAR_DELTS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 20, secondary = listOf(Muscle.UPPER_BACK)),
+        ex("face_pull", "Face Pull", Muscle.REAR_DELTS, Equipment.CABLE, MovementPattern.ISOLATION, 12, 20, secondary = listOf(Muscle.UPPER_BACK, Muscle.TRAPS)),
+        ex("bent_over_reverse_fly", "Bent-Over Reverse Fly", Muscle.REAR_DELTS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 20, secondary = listOf(Muscle.UPPER_BACK)),
+        ex("close_grip_bench_press", "Close-Grip Bench Press", Muscle.TRICEPS, Equipment.BARBELL, MovementPattern.HORIZONTAL_PUSH, 6, 10, secondary = listOf(Muscle.CHEST, Muscle.FRONT_DELTS)),
+        ex("triceps_pushdown", "Triceps Pushdown", Muscle.TRICEPS, Equipment.CABLE, MovementPattern.ISOLATION, 8, 15),
+        ex("rope_pushdown", "Rope Pushdown", Muscle.TRICEPS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15),
+        ex("overhead_cable_extension", "Overhead Cable Extension", Muscle.TRICEPS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15),
+        ex("skull_crusher", "Skull Crusher", Muscle.TRICEPS, Equipment.BARBELL, MovementPattern.ISOLATION, 8, 12),
+        ex("dumbbell_overhead_extension", "Dumbbell Overhead Extension", Muscle.TRICEPS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 15),
+        ex("triceps_dip", "Triceps Dip", Muscle.TRICEPS, Equipment.BODYWEIGHT, MovementPattern.HORIZONTAL_PUSH, 8, 15, secondary = listOf(Muscle.CHEST)),
+        ex("jm_press", "JM Press", Muscle.TRICEPS, Equipment.BARBELL, MovementPattern.ISOLATION, 6, 10),
+        ex("cable_kickback", "Cable Kickback", Muscle.TRICEPS, Equipment.CABLE, MovementPattern.ISOLATION, 12, 20, unilateral = true),
+        ex("machine_triceps_extension", "Machine Triceps Extension", Muscle.TRICEPS, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 15),
+        ex("pull_up", "Pull-Up", Muscle.LATS, Equipment.BODYWEIGHT, MovementPattern.VERTICAL_PULL, 5, 12, secondary = listOf(Muscle.BICEPS, Muscle.UPPER_BACK)),
+        ex("chin_up", "Chin-Up", Muscle.LATS, Equipment.BODYWEIGHT, MovementPattern.VERTICAL_PULL, 5, 12, secondary = listOf(Muscle.BICEPS)),
+        ex("lat_pulldown", "Lat Pulldown", Muscle.LATS, Equipment.CABLE, MovementPattern.VERTICAL_PULL, 8, 15, secondary = listOf(Muscle.BICEPS, Muscle.UPPER_BACK)),
+        ex("neutral_grip_pulldown", "Neutral-Grip Pulldown", Muscle.LATS, Equipment.CABLE, MovementPattern.VERTICAL_PULL, 8, 15, secondary = listOf(Muscle.BICEPS)),
+        ex("single_arm_lat_pulldown", "Single-Arm Lat Pulldown", Muscle.LATS, Equipment.CABLE, MovementPattern.VERTICAL_PULL, 10, 15, secondary = listOf(Muscle.BICEPS), unilateral = true),
+        ex("machine_pulldown", "Machine Pulldown", Muscle.LATS, Equipment.MACHINE, MovementPattern.VERTICAL_PULL, 8, 15, secondary = listOf(Muscle.BICEPS)),
+        ex("straight_arm_pulldown", "Straight-Arm Pulldown", Muscle.LATS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15),
+        ex("dumbbell_pullover", "Dumbbell Pullover", Muscle.LATS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 15, secondary = listOf(Muscle.CHEST)),
+        ex("machine_pullover", "Machine Pullover", Muscle.LATS, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 15),
+        ex("barbell_row", "Barbell Row", Muscle.UPPER_BACK, Equipment.BARBELL, MovementPattern.HORIZONTAL_PULL, 6, 10, secondary = listOf(Muscle.LATS, Muscle.BICEPS, Muscle.REAR_DELTS)),
+        ex("pendlay_row", "Pendlay Row", Muscle.UPPER_BACK, Equipment.BARBELL, MovementPattern.HORIZONTAL_PULL, 5, 8, secondary = listOf(Muscle.LATS, Muscle.BICEPS)),
+        ex("dumbbell_row", "Dumbbell Row", Muscle.UPPER_BACK, Equipment.DUMBBELL, MovementPattern.HORIZONTAL_PULL, 8, 12, secondary = listOf(Muscle.LATS, Muscle.BICEPS), unilateral = true),
+        ex("chest_supported_row", "Chest-Supported Row", Muscle.UPPER_BACK, Equipment.DUMBBELL, MovementPattern.HORIZONTAL_PULL, 8, 15, secondary = listOf(Muscle.LATS, Muscle.REAR_DELTS)),
+        ex("seated_cable_row", "Seated Cable Row", Muscle.UPPER_BACK, Equipment.CABLE, MovementPattern.HORIZONTAL_PULL, 8, 15, secondary = listOf(Muscle.LATS, Muscle.BICEPS)),
+        ex("t_bar_row", "T-Bar Row", Muscle.UPPER_BACK, Equipment.BARBELL, MovementPattern.HORIZONTAL_PULL, 8, 12, secondary = listOf(Muscle.LATS, Muscle.BICEPS)),
+        ex("machine_row", "Machine Row", Muscle.UPPER_BACK, Equipment.MACHINE, MovementPattern.HORIZONTAL_PULL, 8, 15, secondary = listOf(Muscle.LATS, Muscle.BICEPS)),
+        ex("meadows_row", "Meadows Row", Muscle.UPPER_BACK, Equipment.BARBELL, MovementPattern.HORIZONTAL_PULL, 8, 12, secondary = listOf(Muscle.LATS), unilateral = true),
+        ex("inverted_row", "Inverted Row", Muscle.UPPER_BACK, Equipment.BODYWEIGHT, MovementPattern.HORIZONTAL_PULL, 8, 15, secondary = listOf(Muscle.LATS, Muscle.BICEPS)),
+        ex("barbell_shrug", "Barbell Shrug", Muscle.TRAPS, Equipment.BARBELL, MovementPattern.ISOLATION, 8, 15),
+        ex("dumbbell_shrug", "Dumbbell Shrug", Muscle.TRAPS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 15),
+        ex("cable_shrug", "Cable Shrug", Muscle.TRAPS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 20),
+        ex("trap_bar_shrug", "Trap Bar Shrug", Muscle.TRAPS, Equipment.BARBELL, MovementPattern.ISOLATION, 8, 15),
+        ex("barbell_curl", "Barbell Curl", Muscle.BICEPS, Equipment.BARBELL, MovementPattern.ISOLATION, 6, 12, secondary = listOf(Muscle.FOREARMS)),
+        ex("ez_bar_curl", "EZ-Bar Curl", Muscle.BICEPS, Equipment.BARBELL, MovementPattern.ISOLATION, 8, 12, secondary = listOf(Muscle.FOREARMS)),
+        ex("dumbbell_curl", "Dumbbell Curl", Muscle.BICEPS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 8, 15, secondary = listOf(Muscle.FOREARMS)),
+        ex("incline_dumbbell_curl", "Incline Dumbbell Curl", Muscle.BICEPS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 8, 15),
+        ex("hammer_curl", "Hammer Curl", Muscle.BICEPS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 8, 15, secondary = listOf(Muscle.FOREARMS)),
+        ex("cable_curl", "Cable Curl", Muscle.BICEPS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15),
+        ex("bayesian_cable_curl", "Bayesian Cable Curl", Muscle.BICEPS, Equipment.CABLE, MovementPattern.ISOLATION, 10, 15, unilateral = true),
+        ex("preacher_curl", "Preacher Curl", Muscle.BICEPS, Equipment.BARBELL, MovementPattern.ISOLATION, 8, 12),
+        ex("machine_preacher_curl", "Machine Preacher Curl", Muscle.BICEPS, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 15),
+        ex("concentration_curl", "Concentration Curl", Muscle.BICEPS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 15, unilateral = true),
+        ex("spider_curl", "Spider Curl", Muscle.BICEPS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 10, 15),
+        ex("wrist_curl", "Wrist Curl", Muscle.FOREARMS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 12, 20),
+        ex("reverse_wrist_curl", "Reverse Wrist Curl", Muscle.FOREARMS, Equipment.DUMBBELL, MovementPattern.ISOLATION, 12, 20),
+        ex("reverse_curl", "Reverse Curl", Muscle.FOREARMS, Equipment.BARBELL, MovementPattern.ISOLATION, 10, 15, secondary = listOf(Muscle.BICEPS)),
+        ex("farmer_s_carry", "Farmer's Carry", Muscle.FOREARMS, Equipment.DUMBBELL, MovementPattern.CARRY, 1, 1, secondary = listOf(Muscle.TRAPS)),
+        ex("back_squat", "Back Squat", Muscle.QUADS, Equipment.BARBELL, MovementPattern.SQUAT, 5, 10, secondary = listOf(Muscle.GLUTES, Muscle.HAMSTRINGS, Muscle.ADDUCTORS)),
+        ex("front_squat", "Front Squat", Muscle.QUADS, Equipment.BARBELL, MovementPattern.SQUAT, 5, 10, secondary = listOf(Muscle.GLUTES, Muscle.ABS)),
+        ex("hack_squat", "Hack Squat", Muscle.QUADS, Equipment.MACHINE, MovementPattern.SQUAT, 8, 15, secondary = listOf(Muscle.GLUTES)),
+        ex("pendulum_squat", "Pendulum Squat", Muscle.QUADS, Equipment.MACHINE, MovementPattern.SQUAT, 8, 15, secondary = listOf(Muscle.GLUTES)),
+        ex("leg_press", "Leg Press", Muscle.QUADS, Equipment.MACHINE, MovementPattern.SQUAT, 8, 20, secondary = listOf(Muscle.GLUTES, Muscle.ADDUCTORS)),
+        ex("smith_squat", "Smith Squat", Muscle.QUADS, Equipment.SMITH, MovementPattern.SQUAT, 8, 15, secondary = listOf(Muscle.GLUTES)),
+        ex("goblet_squat", "Goblet Squat", Muscle.QUADS, Equipment.DUMBBELL, MovementPattern.SQUAT, 10, 15, secondary = listOf(Muscle.GLUTES)),
+        ex("bulgarian_split_squat", "Bulgarian Split Squat", Muscle.QUADS, Equipment.DUMBBELL, MovementPattern.LUNGE, 8, 15, secondary = listOf(Muscle.GLUTES, Muscle.ADDUCTORS), unilateral = true),
+        ex("walking_lunge", "Walking Lunge", Muscle.QUADS, Equipment.DUMBBELL, MovementPattern.LUNGE, 8, 15, secondary = listOf(Muscle.GLUTES), unilateral = true),
+        ex("step_up", "Step-Up", Muscle.QUADS, Equipment.DUMBBELL, MovementPattern.LUNGE, 8, 15, secondary = listOf(Muscle.GLUTES), unilateral = true),
+        ex("leg_extension", "Leg Extension", Muscle.QUADS, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 20),
+        ex("romanian_deadlift", "Romanian Deadlift", Muscle.HAMSTRINGS, Equipment.BARBELL, MovementPattern.HINGE, 6, 12, secondary = listOf(Muscle.GLUTES, Muscle.LOWER_BACK)),
+        ex("dumbbell_romanian_deadlift", "Dumbbell Romanian Deadlift", Muscle.HAMSTRINGS, Equipment.DUMBBELL, MovementPattern.HINGE, 8, 12, secondary = listOf(Muscle.GLUTES)),
+        ex("stiff_leg_deadlift", "Stiff-Leg Deadlift", Muscle.HAMSTRINGS, Equipment.BARBELL, MovementPattern.HINGE, 6, 12, secondary = listOf(Muscle.GLUTES, Muscle.LOWER_BACK)),
+        ex("lying_leg_curl", "Lying Leg Curl", Muscle.HAMSTRINGS, Equipment.MACHINE, MovementPattern.ISOLATION, 8, 15),
+        ex("seated_leg_curl", "Seated Leg Curl", Muscle.HAMSTRINGS, Equipment.MACHINE, MovementPattern.ISOLATION, 8, 15),
+        ex("single_leg_leg_curl", "Single-Leg Leg Curl", Muscle.HAMSTRINGS, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 15, unilateral = true),
+        ex("nordic_curl", "Nordic Curl", Muscle.HAMSTRINGS, Equipment.BODYWEIGHT, MovementPattern.ISOLATION, 5, 10),
+        ex("good_morning", "Good Morning", Muscle.HAMSTRINGS, Equipment.BARBELL, MovementPattern.HINGE, 8, 12, secondary = listOf(Muscle.GLUTES, Muscle.LOWER_BACK)),
+        ex("conventional_deadlift", "Conventional Deadlift", Muscle.GLUTES, Equipment.BARBELL, MovementPattern.HINGE, 3, 8, secondary = listOf(Muscle.HAMSTRINGS, Muscle.LOWER_BACK, Muscle.TRAPS, Muscle.UPPER_BACK)),
+        ex("sumo_deadlift", "Sumo Deadlift", Muscle.GLUTES, Equipment.BARBELL, MovementPattern.HINGE, 3, 8, secondary = listOf(Muscle.QUADS, Muscle.ADDUCTORS, Muscle.LOWER_BACK)),
+        ex("hip_thrust", "Hip Thrust", Muscle.GLUTES, Equipment.BARBELL, MovementPattern.HINGE, 8, 15, secondary = listOf(Muscle.HAMSTRINGS)),
+        ex("machine_hip_thrust", "Machine Hip Thrust", Muscle.GLUTES, Equipment.MACHINE, MovementPattern.HINGE, 8, 15, secondary = listOf(Muscle.HAMSTRINGS)),
+        ex("barbell_glute_bridge", "Barbell Glute Bridge", Muscle.GLUTES, Equipment.BARBELL, MovementPattern.HINGE, 8, 15),
+        ex("cable_pull_through", "Cable Pull-Through", Muscle.GLUTES, Equipment.CABLE, MovementPattern.HINGE, 10, 20, secondary = listOf(Muscle.HAMSTRINGS)),
+        ex("cable_glute_kickback", "Cable Glute Kickback", Muscle.GLUTES, Equipment.CABLE, MovementPattern.ISOLATION, 12, 20, unilateral = true),
+        ex("hip_abduction_machine", "Hip Abduction Machine", Muscle.GLUTES, Equipment.MACHINE, MovementPattern.ISOLATION, 12, 25),
+        ex("standing_calf_raise", "Standing Calf Raise", Muscle.CALVES, Equipment.MACHINE, MovementPattern.ISOLATION, 8, 15),
+        ex("seated_calf_raise", "Seated Calf Raise", Muscle.CALVES, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 20),
+        ex("leg_press_calf_raise", "Leg Press Calf Raise", Muscle.CALVES, Equipment.MACHINE, MovementPattern.ISOLATION, 10, 20),
+        ex("smith_calf_raise", "Smith Calf Raise", Muscle.CALVES, Equipment.SMITH, MovementPattern.ISOLATION, 10, 20),
+        ex("adductor_machine", "Adductor Machine", Muscle.ADDUCTORS, Equipment.MACHINE, MovementPattern.ISOLATION, 12, 20),
+        ex("cable_crunch", "Cable Crunch", Muscle.ABS, Equipment.CABLE, MovementPattern.CORE, 10, 20),
+        ex("hanging_leg_raise", "Hanging Leg Raise", Muscle.ABS, Equipment.BODYWEIGHT, MovementPattern.CORE, 8, 20),
+        ex("hanging_knee_raise", "Hanging Knee Raise", Muscle.ABS, Equipment.BODYWEIGHT, MovementPattern.CORE, 10, 20),
+        ex("machine_crunch", "Machine Crunch", Muscle.ABS, Equipment.MACHINE, MovementPattern.CORE, 10, 20),
+        ex("ab_wheel_rollout", "Ab Wheel Rollout", Muscle.ABS, Equipment.BODYWEIGHT, MovementPattern.CORE, 8, 15),
+        ex("decline_sit_up", "Decline Sit-Up", Muscle.ABS, Equipment.BODYWEIGHT, MovementPattern.CORE, 10, 20),
+        ex("plank", "Plank", Muscle.ABS, Equipment.BODYWEIGHT, MovementPattern.CORE, 1, 1),
+        ex("back_extension", "Back Extension", Muscle.LOWER_BACK, Equipment.BODYWEIGHT, MovementPattern.HINGE, 10, 20, secondary = listOf(Muscle.GLUTES, Muscle.HAMSTRINGS)),
+        ex("reverse_hyperextension", "Reverse Hyperextension", Muscle.LOWER_BACK, Equipment.MACHINE, MovementPattern.HINGE, 10, 20, secondary = listOf(Muscle.GLUTES)),
+    )
+}

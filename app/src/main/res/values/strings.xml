@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Forge</string>
+    <string name="rest_channel_name">Rest timer</string>
+    <string name="rest_channel_desc">Fires once when your rest period ends.</string>
+</resources>
