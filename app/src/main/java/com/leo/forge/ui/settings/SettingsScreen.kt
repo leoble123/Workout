@@ -58,6 +58,12 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
                     "Scrolls to the next set so you never hunt for it.",
                     settings.autoAdvance, vm::setAutoAdvance,
                 )
+                ToggleRow(
+                    "Track reps in reserve",
+                    "Rate how close each set was to failure. Sharpens the weight suggestions; " +
+                        "leave it off and progression runs on reps alone.",
+                    settings.showRir, vm::setShowRir,
+                )
                 ToggleRow("Haptics", "A tap you can feel without looking.", settings.haptics, vm::setHaptics)
                 ToggleRow(
                     "Keep the screen on",

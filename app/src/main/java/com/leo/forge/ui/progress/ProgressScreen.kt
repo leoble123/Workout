@@ -21,7 +21,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.leo.forge.domain.model.BodyPart
 import com.leo.forge.ui.components.*
 import com.leo.forge.ui.history.HistoryList
-import com.leo.forge.ui.stats.ChartsContent
 import com.leo.forge.ui.theme.Forge
 import com.leo.forge.ui.theme.NumericStyle
 import com.leo.forge.ui.theme.loadWithUnit
@@ -29,7 +28,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
-private enum class Section(val label: String) { RECORDS("Records"), HISTORY("History"), CHARTS("Charts") }
+private enum class Section(val label: String) { RECORDS("Records"), HISTORY("History"), INSIGHTS("Insights") }
 
 /**
  * One place for everything that already happened.
@@ -58,7 +57,7 @@ fun ProgressScreen(
         when (section) {
             Section.RECORDS -> RecordsTab(onOpenExercise)
             Section.HISTORY -> HistoryList(onOpenSession)
-            Section.CHARTS -> ChartsContent()
+            Section.INSIGHTS -> InsightsTab()
         }
     }
 }

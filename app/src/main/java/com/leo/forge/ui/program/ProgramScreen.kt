@@ -80,6 +80,8 @@ fun PlanScreen(
                     isBuilding = state.building,
                     gymName = gym.name,
                     availableCount = gym.availableCount,
+                    gym = gym,
+                    onToggleEquipment = vm::setEquipment,
                     onBuild = { split, days, weeks, emphasis ->
                         vm.build("${split.display} block", split, days, weeks, emphasis) { building = false }
                     },
@@ -204,6 +206,8 @@ private fun BuilderCard(
     isBuilding: Boolean,
     gymName: String?,
     availableCount: Int,
+    gym: GymSummary,
+    onToggleEquipment: (com.leo.forge.domain.model.Equipment, Boolean) -> Unit,
     onBuild: (SplitType, Int, Int, Set<Muscle>) -> Unit,
     onCancel: (() -> Unit)?,
 ) {
@@ -255,6 +259,38 @@ private fun BuilderCard(
                     }
                 }
             }
+
+            Spacer(Modifier.height(18.dp))
+            SectionHeader("What you have")
+            Text(
+                "Tick exactly what is on the floor. This is the gym profile, so it sticks - " +
+                    "and nothing gets generated that you cannot actually perform.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Forge.colors.textSecondary,
+            )
+            Spacer(Modifier.height(10.dp))
+            com.leo.forge.domain.model.EquipmentCategory.entries.forEach { category ->
+                Text(
+                    category.display.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Forge.colors.textTertiary,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                )
+                Wrap {
+                    com.leo.forge.domain.model.Equipment.entries
+                        .filter { it.category == category }
+                        .forEach { eq ->
+                            val on = gym.has(eq)
+                            SelectChip(eq.display, on) { onToggleEquipment(eq, !on) }
+                        }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "$availableCount exercises available with this kit.",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (availableCount < 20) Forge.colors.warn else Forge.colors.good,
+            )
 
             Spacer(Modifier.height(20.dp))
             PrimaryButton(

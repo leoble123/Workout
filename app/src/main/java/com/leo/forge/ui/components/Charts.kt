@@ -9,6 +9,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -247,5 +249,98 @@ fun Sparkline(values: List<Double>, modifier: Modifier = Modifier, color: Color 
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
         drawPath(path, color, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+    }
+}
+
+/**
+ * Change in estimated 1RM per lift, gains right of the line and losses left.
+ *
+ * Diverging around a neutral zero: two hues with a grey midpoint, never a rainbow. Every bar
+ * carries its own name and signed value, so the direction is readable without relying on
+ * telling teal from coral.
+ */
+@Composable
+fun MoversChart(
+    rows: List<Triple<String, Double, Double>>,
+    modifier: Modifier = Modifier,
+    unitLabel: String = "kg",
+) {
+    if (rows.isEmpty()) {
+        Box(modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) {
+            Text(
+                "Two sessions on a lift before its trend means anything.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Forge.colors.textTertiary,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+
+    val maxAbs = rows.maxOf { abs(it.second) }.coerceAtLeast(0.001)
+    val gain = Forge.colors.good
+    val loss = Forge.colors.danger
+    val zeroLine = Forge.colors.outline
+    val track = Forge.colors.surface3
+
+    Column(modifier.fillMaxWidth()) {
+        rows.forEach { (name, delta, pct) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    name,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Forge.colors.textSecondary,
+                    maxLines = 1,
+                    modifier = Modifier.width(104.dp),
+                )
+                Canvas(
+                    Modifier
+                        .weight(1f)
+                        .height(14.dp)
+                        .padding(horizontal = 6.dp)
+                ) {
+                    val h = 10.dp.toPx()
+                    val r = 4.dp.toPx()
+                    val top = (size.height - h) / 2f
+                    val mid = size.width / 2f
+                    drawRoundRect(
+                        color = track,
+                        topLeft = Offset(0f, top + h / 2f - 1.dp.toPx()),
+                        size = Size(size.width, 2.dp.toPx()),
+                        cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx()),
+                    )
+                    val extent = (abs(delta) / maxAbs).toFloat() * (mid - 2.dp.toPx())
+                    if (extent > 0.5f) {
+                        val left = if (delta >= 0) mid else mid - extent
+                        drawRoundRect(
+                            color = if (delta >= 0) gain else loss,
+                            topLeft = Offset(left, top),
+                            size = Size(extent, h),
+                            cornerRadius = CornerRadius(r, r),
+                        )
+                    }
+                    // Neutral midpoint, drawn last so it always reads.
+                    drawLine(
+                        color = zeroLine,
+                        start = Offset(mid, top - 2.dp.toPx()),
+                        end = Offset(mid, top + h + 2.dp.toPx()),
+                        strokeWidth = 1.dp.toPx(),
+                    )
+                }
+                Text(
+                    (if (delta >= 0) "+" else "") + "${pct.roundToInt()}%",
+                    style = NumericStyle.copy(fontSize = 12.sp),
+                    color = if (delta >= 0) Forge.colors.good else Forge.colors.danger,
+                    modifier = Modifier.width(48.dp),
+                    textAlign = TextAlign.End,
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Change in estimated 1RM, first logged session to most recent.",
+            style = MaterialTheme.typography.labelSmall,
+            color = Forge.colors.textTertiary,
+        )
     }
 }

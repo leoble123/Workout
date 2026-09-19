@@ -65,6 +65,7 @@ fun SessionScreen(
     var showFinish by remember { mutableStateOf(false) }
     var showAbandon by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
+    var helpFor by remember { mutableStateOf<com.leo.forge.data.db.entity.ExerciseEntity?>(null) }
     var swapTarget by remember { mutableStateOf<SessionExerciseEntity?>(null) }
     val picker by vm.picker.collectAsStateWithLifecycle()
 
@@ -78,8 +79,11 @@ fun SessionScreen(
         onDispose { view.keepScreenOn = false }
     }
 
-    // Keep the next set in view without the user chasing it.
-    val focus = state.nextFocus
+    // Keep the settings-driven RIR preference in sync with the view model.
+    LaunchedEffect(settings.showRir) { vm.setShowRir(settings.showRir) }
+
+    // Keep the current set in view without the user chasing it.
+    val focus = state.focus
     LaunchedEffect(focus?.first, settings.autoAdvance) {
         if (settings.autoAdvance && focus != null) {
             listState.animateScrollToItem(index = (focus.first + 1).coerceAtMost(state.plans.size))
@@ -113,9 +117,11 @@ fun SessionScreen(
                     onRir = { si, r -> vm.setRir(plan.exercise.id, si, r) },
                     onLog = { si ->
                         val next = nextLabelAfter(state, plan, si)
-                        vm.logSet(plan, si, settings.autoStartRest, next)
+                        vm.logSet(plan, si, settings.autoStartRest, next, settings.showRir)
                     },
                     onUndo = { vm.undo(it) },
+                    onFocusSet = { si -> vm.focusSet(plan.exercise.id, si) },
+                    onHelp = { helpFor = plan.exercise },
                     onAddSet = { plan.sessionExercise?.let { vm.changeSets(it, 1) } },
                     onRemoveSet = { plan.sessionExercise?.let { vm.changeSets(it, -1) } },
                     onSwap = { swapTarget = plan.sessionExercise },
@@ -173,6 +179,8 @@ fun SessionScreen(
             }
         }
     }
+
+    helpFor?.let { ExerciseHelpSheet(it) { helpFor = null } }
 
     if (showPicker) {
         ExercisePickerSheet(
@@ -316,6 +324,8 @@ private fun ExerciseBlock(
     onRir: (Int, Int) -> Unit,
     onLog: (Int) -> Unit,
     onUndo: (com.leo.forge.data.db.entity.SetLogEntity) -> Unit,
+    onFocusSet: (Int) -> Unit,
+    onHelp: () -> Unit,
     onAddSet: () -> Unit,
     onRemoveSet: () -> Unit,
     onSwap: () -> Unit,
@@ -344,6 +354,7 @@ private fun ExerciseBlock(
                         Chip("RIR ${targets.firstOrNull()?.targetRir ?: 2}")
                     }
                 }
+                HelpButton(onClick = onHelp)
                 IconButton(onClick = { showWhy = !showWhy }) {
                     Icon(
                         Icons.Rounded.Info,
@@ -399,7 +410,7 @@ private fun ExerciseBlock(
 
             targets.forEach { target ->
                 val logged = state.loggedSet(plan.exercise.id, target.setIndex)
-                val isActive = state.nextFocus == (state.plans.indexOfFirst { it.id == plan.id } to target.setIndex)
+                val isActive = state.focus == (state.plans.indexOfFirst { it.id == plan.id } to target.setIndex)
                 SetRow(
                     target = target,
                     entry = state.entries[state.key(plan.exercise.id, target.setIndex)],
@@ -412,6 +423,8 @@ private fun ExerciseBlock(
                     onRir = { r -> onRir(target.setIndex, r) },
                     onLog = { onLog(target.setIndex) },
                     onUndo = { logged?.let(onUndo) },
+                    onFocus = { onFocusSet(target.setIndex) },
+                    showRir = state.showRir,
                 )
             }
         }
@@ -431,6 +444,8 @@ private fun SetRow(
     onRir: (Int) -> Unit,
     onLog: () -> Unit,
     onUndo: () -> Unit,
+    onFocus: () -> Unit,
+    showRir: Boolean,
 ) {
     val haptic = LocalHapticFeedback.current
     val hapticsOn = LocalHapticsEnabled.current
@@ -500,11 +515,20 @@ private fun SetRow(
                     onStep = onStepReps,
                 )
                 Spacer(Modifier.weight(1f))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "LOG SET",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Forge.colors.textTertiary,
+                )
+                Spacer(Modifier.height(4.dp))
                 LogButton {
                     if (hapticsOn) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onLog()
                 }
+                }
             }
+            if (showRir) {
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("RIR", style = MaterialTheme.typography.labelSmall, color = Forge.colors.textTertiary)
@@ -527,10 +551,16 @@ private fun SetRow(
                     }
                 }
             }
+            }
         }
 
+        // Upcoming: tap to jump straight to it, for sets done out of order.
         else -> Row(
-            Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 4.dp),
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable { onFocus() }
+                .padding(vertical = 10.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -550,6 +580,12 @@ private fun SetRow(
             Text(
                 if (target.weightKg > 0) "${loadWithUnit(target.weightKg)} × ${target.reps}" else "— × ${target.reps}",
                 style = NumericStyle.copy(fontSize = 15.sp),
+                color = Forge.colors.textTertiary,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "tap to jump",
+                style = MaterialTheme.typography.labelSmall,
                 color = Forge.colors.textTertiary,
             )
         }

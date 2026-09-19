@@ -44,6 +44,7 @@ class SettingsViewModel(
     fun setOled(v: Boolean) = viewModelScope.launch { store.setOled(v) }
     fun setHaptics(v: Boolean) = viewModelScope.launch { store.setHaptics(v) }
     fun setKeepScreenOn(v: Boolean) = viewModelScope.launch { store.setKeepScreenOn(v) }
+    fun setShowRir(v: Boolean) = viewModelScope.launch { store.setShowRir(v) }
 
     fun importHevy(resolver: ContentResolver, uri: Uri) {
         if (_importState.value is ImportUiState.Running) return

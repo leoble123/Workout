@@ -236,6 +236,9 @@ interface SetLogDao {
 
     @Query("SELECT * FROM set_logs WHERE exerciseId = :exerciseId AND type = 'WORKING' ORDER BY completedAt DESC LIMIT :limit")
     fun observeSetsFor(exerciseId: String, limit: Int = 300): Flow<List<SetLogEntity>>
+
+    @Query("SELECT * FROM set_logs WHERE type = 'WORKING' AND completedAt >= :since ORDER BY completedAt")
+    fun observeWorkingSetsSince(since: Long): Flow<List<SetLogEntity>>
 }
 
 @Dao

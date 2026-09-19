@@ -486,6 +486,8 @@ class WorkoutRepository(private val db: ForgeDatabase, private val gyms: GymRepo
 class StatsRepository(private val db: ForgeDatabase) {
 
     fun records(): Flow<List<com.leo.forge.data.db.dao.ExerciseRecord>> = db.setLogs().observeRecords()
+    fun workingSetsSince(since: Long): Flow<List<com.leo.forge.data.db.entity.SetLogEntity>> =
+        db.setLogs().observeWorkingSetsSince(since)
     fun topSet(exerciseId: String): Flow<com.leo.forge.data.db.entity.SetLogEntity?> = db.setLogs().observeTopSet(exerciseId)
     fun setsFor(exerciseId: String): Flow<List<com.leo.forge.data.db.entity.SetLogEntity>> = db.setLogs().observeSetsFor(exerciseId)
 

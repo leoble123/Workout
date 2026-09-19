@@ -49,6 +49,10 @@ can add, swap or drop movements mid-workout without touching the block.
 an e1RM trend, and every set you have ever logged on it, grouped by day. Working out what you
 lifted last time should never mean scrolling a feed of workouts.
 
+**Every exercise carries form notes** behind a "?" — how to set up, how the rep should feel,
+and the one mistake that actually costs people progress or a joint. Three short paragraphs,
+because mid-set is not the moment for an article. All 147 are covered and a test enforces that.
+
 **Picking an exercise** works the way it should: type a few letters, or tap a body part.
 Equipment your gym does not have is sorted to the bottom and labelled, rather than hidden -
 silently omitting something looks identical to the app not having it.
@@ -73,6 +77,10 @@ yes/no beats a station, which beats the broad category.
 Station names are yours to write. The app has no way to verify a manufacturer's model number
 and does not invent one — what it actually needs is the exercise list.
 
+The block builder shows that same equipment list and lets you tick it there, so nothing about
+what gets generated is a guess. Edits write to the gym profile rather than being a second,
+divergent answer to "what is on the floor".
+
 If the gym cannot train a muscle at all, the generator says so instead of quietly dropping it.
 
 Gyms can also override the barbell step: if the smallest plate on the rack is 2.5 lb, the
@@ -87,6 +95,24 @@ toggle, and every suggestion lands on plates that exist in the room you are stan
 
 Every prescription carries a plain-English reason, reachable from the ⓘ on any exercise. A
 number you cannot interrogate is a number you stop trusting.
+
+**Reps in reserve is optional.** On, it sharpens the suggestions by telling the engine how
+close each set actually was to failure. Off, progression runs on reps alone, which is plain
+double progression and still works. It is a switch in Settings rather than a thing you must
+buy into.
+
+## Summaries
+
+The Insights tab reads the last 90 days and writes up what actually moved: which lifts are
+climbing and by how much, which have stalled across three or more sessions, whether volume is
+going anywhere, and which muscles fell below MEV or above MRV this week. Alongside it, a
+diverging chart of estimated-1RM change per lift.
+
+It runs on the device — no account, no network, nothing leaves the phone. It is arithmetic and
+rules rather than a language model, which makes it instant, free, offline, and unable to
+invent a number: every figure traces to sets you logged. It generates on a button rather than
+continuously, because a summary that rewrites itself while you read it is worse than one you
+asked for.
 
 ## Why it should not cook your phone
 
@@ -139,13 +165,14 @@ Single-module, single-activity Compose. Kotlin 2.0, Room, DataStore, Navigation 
 domain/          the parts with no Android in them, and the parts worth testing
   progression/   ProgressionEngine (loads and reps), VolumeAutoregulator (set counts)
   volume/        per-muscle MV/MEV/MAV/MRV landmarks and the weekly ramp
+  insights/      reads the log and writes it up
   gym/           which exercises a given gym can actually perform
   model/Load     unit conversion and per-implement, per-unit load increments
   mesocycle/     MesocycleGenerator — split layout, volume allocation, exercise selection
   model/         enums and the 1RM maths
 data/
   db/            Room entities, DAOs, converters
-  seed/          147 seeded exercises, plus gym presets
+  seed/          147 seeded exercises with form notes, plus gym presets
   importer/      RFC 4180 CSV reader, Hevy importer, name classifier
   repo/          repositories; WorkoutRepository.prescribe() is where a day becomes targets
 ui/              theme and motion system, shared components, one package per screen
@@ -171,13 +198,16 @@ single-user app it is less machinery, and it keeps the build to one annotation p
 - **Per-exercise gym notes.** The schema carries notes against an exercise at a gym ("this
   leg press starts at 60"), and the session screen does not surface them yet.
 - **Reordering** exercises within a session or a planned day.
+- **A language-model summary.** The Insights write-up is computed locally on purpose. Routing
+  it through an actual model would need a key, a network call and your training data leaving
+  the device — worth doing if you want it, but it should be a choice rather than a surprise.
 - **Bar weight and a plate calculator.** Loads are logged as the total lifted; with a light
   bar and an odd plate selection, being told which plates to hang on it would help.
 - **Baseline profile.** `profileinstaller` ships, but no profile is generated yet.
 
 ## Tests
 
-77 unit tests over the progression engine, the unit/loading model, volume ramp and
+89 unit tests over the progression engine, the unit/loading model, volume ramp and
 autoregulator, the generator, gym availability and equipment requirements, the CSV parser and
 the Hevy importer's date handling. `./gradlew test`.
 

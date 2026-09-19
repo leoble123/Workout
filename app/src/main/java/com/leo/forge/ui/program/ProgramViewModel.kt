@@ -25,7 +25,12 @@ data class GymSummary(
     val availableCount: Int = 0,
     val library: List<ExerciseEntity> = emptyList(),
     val availableIds: Set<String>? = null,
-)
+    val equipment: List<com.leo.forge.data.db.entity.GymEquipmentEntity> = emptyList(),
+    val gymId: Long? = null,
+) {
+    fun has(equipment: Equipment): Boolean =
+        this.equipment.firstOrNull { it.equipment == equipment }?.available ?: false
+}
 
 @Immutable
 data class ProgramState(
@@ -44,17 +49,34 @@ class ProgramViewModel(
     private val building = MutableStateFlow(false)
 
     /** The gym the block will be built from, and how much it can actually do. */
+    private val activeGym = gyms.observeActive()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val gymSummary: StateFlow<GymSummary> = combine(
-        gyms.observeActive(), gyms.observeAvailableExerciseIds(), exercises.observeAll(),
-    ) { gym, ids, library ->
+        activeGym,
+        gyms.observeAvailableExerciseIds(),
+        exercises.observeAll(),
+        activeGym.flatMapLatest { g -> if (g == null) flowOf(emptyList()) else gyms.observeEquipment(g.id) },
+    ) { gym, ids, library, equipment ->
         GymSummary(
             name = gym?.name,
             units = gym?.units,
             availableCount = ids?.size ?: library.size,
             library = library,
             availableIds = ids,
+            equipment = equipment,
+            gymId = gym?.id,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GymSummary())
+
+    /**
+     * Equipment edited in the builder writes straight to the gym profile rather than being a
+     * separate per-block answer - there is only one true answer to "what is on the floor",
+     * and keeping two of them is how they drift apart.
+     */
+    fun setEquipment(equipment: Equipment, available: Boolean) = viewModelScope.launch {
+        gymSummary.value.gymId?.let { gyms.setEquipmentAvailable(it, equipment, available) }
+    }
 
     private val mesoFlow = program.observeCurrent()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)

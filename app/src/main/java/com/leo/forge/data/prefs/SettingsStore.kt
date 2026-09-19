@@ -18,6 +18,7 @@ data class ForgeSettings(
     val haptics: Boolean = true,
     val soundOnRestEnd: Boolean = true,
     val keepScreenOn: Boolean = false,
+    val showRir: Boolean = false,
     val restNudgeSeconds: Int = 15,
     val onboarded: Boolean = false,
     val gymSeedVersion: Int = 0,
@@ -33,6 +34,7 @@ class SettingsStore(private val context: Context) {
         val HAPTICS = booleanPreferencesKey("haptics")
         val SOUND = booleanPreferencesKey("sound_rest_end")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val SHOW_RIR = booleanPreferencesKey("show_rir")
         val NUDGE = intPreferencesKey("rest_nudge")
         val ONBOARDED = booleanPreferencesKey("onboarded")
         val GYM_SEED = intPreferencesKey("gym_seed_version")
@@ -47,6 +49,7 @@ class SettingsStore(private val context: Context) {
             haptics = p[Keys.HAPTICS] ?: true,
             soundOnRestEnd = p[Keys.SOUND] ?: true,
             keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: false,
+            showRir = p[Keys.SHOW_RIR] ?: false,
             restNudgeSeconds = p[Keys.NUDGE] ?: 15,
             onboarded = p[Keys.ONBOARDED] ?: false,
             gymSeedVersion = p[Keys.GYM_SEED] ?: 0,
@@ -60,6 +63,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setHaptics(v: Boolean) = edit { it[Keys.HAPTICS] = v }
     suspend fun setSound(v: Boolean) = edit { it[Keys.SOUND] = v }
     suspend fun setKeepScreenOn(v: Boolean) = edit { it[Keys.KEEP_SCREEN_ON] = v }
+    suspend fun setShowRir(v: Boolean) = edit { it[Keys.SHOW_RIR] = v }
     suspend fun setOnboarded(v: Boolean) = edit { it[Keys.ONBOARDED] = v }
     suspend fun setGymSeedVersion(v: Int) = edit { it[Keys.GYM_SEED] = v }
 

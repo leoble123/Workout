@@ -59,6 +59,29 @@ fun ExerciseDetailScreen(
             }
         }
 
+        state.exercise?.let { ex ->
+            com.leo.forge.data.seed.ExerciseGuide.forExercise(ex.id)?.let { cues ->
+                item { SectionHeader("How to do it") }
+                item {
+                    ForgeCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("SET UP", style = MaterialTheme.typography.labelSmall, color = Forge.colors.accent)
+                            Spacer(Modifier.height(4.dp))
+                            Text(cues.setup, style = MaterialTheme.typography.bodySmall, color = Forge.colors.textSecondary)
+                            Spacer(Modifier.height(12.dp))
+                            Text("THE REP", style = MaterialTheme.typography.labelSmall, color = Forge.colors.accent)
+                            Spacer(Modifier.height(4.dp))
+                            Text(cues.execution, style = MaterialTheme.typography.bodySmall, color = Forge.colors.textSecondary)
+                            Spacer(Modifier.height(12.dp))
+                            Text("COMMON MISTAKE", style = MaterialTheme.typography.labelSmall, color = Forge.colors.accent)
+                            Spacer(Modifier.height(4.dp))
+                            Text(cues.mistake, style = MaterialTheme.typography.bodySmall, color = Forge.colors.warn)
+                        }
+                    }
+                }
+            }
+        }
+
         item { SectionHeader("Personal bests") }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

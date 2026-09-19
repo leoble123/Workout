@@ -43,6 +43,7 @@ fun ExercisePickerSheet(
     }
     var gymOnly by remember { mutableStateOf(availableIds != null) }
     val selected = remember { mutableStateListOf<String>() }
+    var helpFor by remember { mutableStateOf<ExerciseEntity?>(null) }
 
     val results = remember(query, bodyPart, gymOnly, library, availableIds) {
         val q = query.trim().lowercase()
@@ -60,6 +61,8 @@ fun ExercisePickerSheet(
             .take(300)
             .toList()
     }
+
+    helpFor?.let { ExerciseHelpSheet(it) { helpFor = null } }
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Forge.colors.surface1) {
         Column(Modifier.fillMaxWidth().heightIn(max = 700.dp)) {
@@ -137,6 +140,7 @@ fun ExercisePickerSheet(
                                 color = if (unavailable) Forge.colors.warn else Forge.colors.textTertiary,
                             )
                         }
+                        HelpButton(onClick = { helpFor = exercise })
                         if (multiSelect && isSelected) {
                             Box(
                                 Modifier.size(24.dp).clip(RoundedCornerShape(8.dp)).background(Forge.colors.accent),

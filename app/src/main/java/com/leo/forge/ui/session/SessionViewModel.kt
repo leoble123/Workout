@@ -41,6 +41,9 @@ data class SessionUiState(
     val entries: Map<String, SetEntry> = emptyMap(),
     val logged: List<SetLogEntity> = emptyList(),
     val rest: RestState = RestState.Idle,
+    /** A set you tapped, which wins over the automatic "first unlogged" focus. */
+    val manualFocus: Pair<String, Int>? = null,
+    val showRir: Boolean = false,
     val prBanner: String? = null,
     val dismissed: Boolean = false,
 ) {
@@ -52,7 +55,17 @@ data class SessionUiState(
     val totalSets: Int get() = plans.sumOf { it.prescription.targets.size }
     val doneSets: Int get() = logged.count { it.type == SetType.WORKING }
 
-    /** The first unlogged set, which is what the screen keeps in front of you. */
+    /** The set the screen is showing controls for: whatever you tapped, else the next unlogged one. */
+    val focus: Pair<Int, Int>?
+        get() {
+            manualFocus?.let { (exerciseId, setIndex) ->
+                val index = plans.indexOfFirst { it.exercise.id == exerciseId }
+                if (index >= 0 && loggedSet(exerciseId, setIndex) == null) return index to setIndex
+            }
+            return nextFocus
+        }
+
+    /** The first unlogged set, in order. */
     val nextFocus: Pair<Int, Int>?
         get() {
             plans.forEachIndexed { ei, plan ->
@@ -94,6 +107,8 @@ class SessionViewModel(
     private val meso = MutableStateFlow<MesocycleEntity?>(null)
     private val loading = MutableStateFlow(true)
     private val prBanner = MutableStateFlow<String?>(null)
+    private val manualFocus = MutableStateFlow<Pair<String, Int>?>(null)
+    private val showRir = MutableStateFlow(false)
     private val dismissed = MutableStateFlow(false)
 
     private val sessionFlow: StateFlow<SessionEntity?> =
@@ -113,6 +128,8 @@ class SessionViewModel(
         .combine(loading) { s, l -> s.copy(loading = l) }
         .combine(prBanner) { s, pr -> s.copy(prBanner = pr) }
         .combine(dismissed) { s, d -> s.copy(dismissed = d) }
+        .combine(manualFocus) { s, f -> s.copy(manualFocus = f) }
+        .combine(showRir) { s, r -> s.copy(showRir = r) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionUiState())
 
     private val sessionExercises: Flow<List<SessionExerciseEntity>> = sessionFlow.flatMapLatest { s ->
@@ -161,6 +178,13 @@ class SessionViewModel(
             merged
         }
     }
+
+    /** Jump to any set - useful when you do them out of order, or fix one you skipped. */
+    fun focusSet(exerciseId: String, setIndex: Int) {
+        manualFocus.value = exerciseId to setIndex
+    }
+
+    fun setShowRir(value: Boolean) { showRir.value = value }
 
     fun addExercise(exerciseId: String) {
         val session = sessionFlow.value ?: return
@@ -216,7 +240,7 @@ class SessionViewModel(
     }
 
     /** Logs one set. Returns true when it set a personal best. */
-    fun logSet(plan: ExercisePlanUi, setIndex: Int, autoStartRest: Boolean, nextLabel: String) {
+    fun logSet(plan: ExercisePlanUi, setIndex: Int, autoStartRest: Boolean, nextLabel: String, trackRir: Boolean) {
         val session = sessionFlow.value ?: return
         val key = "${plan.exercise.id}:$setIndex"
         val entry = entries.value[key] ?: return
@@ -235,11 +259,13 @@ class SessionViewModel(
                 setIndex = setIndex,
                 weightKg = weight,
                 reps = reps,
-                rir = entry.rir,
+                // Not tracking effort means logging no opinion, rather than a made-up one.
+                rir = entry.rir.takeIf { trackRir },
                 target = target,
                 restSecondsBefore = (restTimer.state.value as? RestState.Running)?.totalSeconds,
             )
             if (isPr) prBanner.value = "${plan.exercise.name} - best estimated 1RM yet"
+            manualFocus.value = null
             if (autoStartRest) {
                 restTimer.start(plan.prescription.restSeconds, nextLabel)
             } else {
